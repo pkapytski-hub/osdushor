@@ -125,6 +125,9 @@ public/                    статика: изображения, шрифты,
 
 ## Публикация
 
+Полный пошаговый чек-лист — в [DEPLOY.md](DEPLOY.md): ресурсы D1/R2, переменные
+и секреты, домен, проверки после деплоя и типовые проблемы.
+
 ```sh
 # 1. Ресурсы Cloudflare
 wrangler d1 create osdushor-db          # id базы → database_id в wrangler.toml

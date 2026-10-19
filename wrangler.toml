@@ -2,6 +2,11 @@ name = "osdushor"
 main = "worker/index.ts"
 compatibility_date = "2026-10-01"
 
+# Публичный адрес: https://osdushor.pkapytski.workers.dev.
+# Реальный поддомен аккаунта смотрите в `npx wrangler whoami` — он нужен для
+# APP_ORIGIN ниже. Локально значение переопределяется в .dev.vars.
+workers_dev = true
+
 # Сайт: статические файлы Vite + Worker для API, SEO и админ-панели.
 [assets]
 directory = "./dist"
@@ -9,19 +14,32 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
+# Свой домен: раскомментируйте блок после подключения зоны к аккаунту
+# и одновременно замените APP_ORIGIN на тот же origin в [vars] ниже.
+# [[routes]]
+# pattern = "osdushor.by"
+# custom_domain = true
+
 [[d1_databases]]
 binding = "DB"
 database_name = "osdushor-db"
 # Замените на идентификатор, который выдаст `wrangler d1 create osdushor-db`.
-database_id = "5f2c9a4e-8d31-4b7a-9f60-2d3e8a1c7b45"
+database_id = "fc5c026f-1c5c-430a-857c-ee4e5eed832e"
 
 [[r2_buckets]]
 binding = "FILES"
 bucket_name = "osdushor-files"
 
 [vars]
-APP_ORIGIN = "http://127.0.0.1:5173"
+# Публичный origin без слэша: участвует в списке разрешённых Origin для мутаций
+# и в secure-флаге кук, а README ссылается на него как на адрес сайта.
+# Замените поддомен на реальный из `npx wrangler whoami`, либо задайте через
+# `wrangler secret put APP_ORIGIN`.
+APP_ORIGIN = "https://osdushor.pkapytski.workers.dev"
+# В development локально переопределяется в .dev.vars.
 ENVIRONMENT = "production"
+# DEMO_DATA здесь намеренно не задаётся: на проде демо-данные выключены,
+# а предупреждения о демо-режиме не показываются.
 
 [observability]
 enabled = true
