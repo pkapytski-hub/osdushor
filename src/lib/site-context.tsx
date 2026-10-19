@@ -34,6 +34,7 @@ const SiteContext = createContext<SiteContextValue>({
 
 export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(DEFAULTS);
+  const [turnstileSitekey, setTurnstileSitekey] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -47,7 +48,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       .settings(controller.signal)
       .then((response) => {
         setSettings({ ...DEFAULTS, ...response.settings });
-        setTurnstileSitekey(response.turnstile_sitekey_?.trim() ?? "");
+        setTurnstileSitekey(response.turnstile_sitekey?.trim() ?? "");
         setError(null);
       })
       .catch(() => {
@@ -62,7 +63,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   }, [nonce]);
 
   return (
-    <SiteContext.Provider value={{ settings, loading, error, reload }}>{children}</SiteContext.Provider>
+    <SiteContext.Provider value={{ settings, turnstileSitekey, loading, error, reload }}>{children}</SiteContext.Provider>
   );
 }
 

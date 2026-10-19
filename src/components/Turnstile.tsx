@@ -2,105 +2,89 @@ import { useRef, useCallback, useEffect, type ReactNode } from "react";
 
 const SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
-let scriptPromise: Promise<void> | null = null;
-let onInstalledCallback: (() => void)[] = [];
+// Единый контейнер состояния виджета на страницу (виджет один).
+const state: {
+  token: string | null;
+  widgetId: string | null;
+  mounted: boolean;
+} = {
+  token: null,
+  widgetId: null,
+  mounted: false,
+};
 
-function ensureScript() {
-  if (scriptPromise) return scriptPromise;
-  scriptPromise = new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector(
-      `script[src="${SCRIPT_URL}"]`,
-    );
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", reject, { once: true });
-      return;
-    }
+function clearToken() {
+  state.token = null;
+  state.widgetId && window.turnstile && window.turnstile.reset(state.widgetId);
+  state.widgetId = null;
+}
 
-    const tag = document.createElement("script");
-    tag.src = SCRIPT_URL;
-    tag.async = true;
-    tag.onload = () => resolve();
-    tag.onerror = reject;
-    document.head.appendChild(tag);
-  });
+function onToken(token: string) {
+  state.token = token;
+}
 
-  const installed = () => {
-    if (window.turnstile) {
-      for (const cb of onInstalledCallback) cb();
-      onInstalledCallback.length = 0;
-    }
-  };
-  window.addEventListener("turnstile_loaded", installed, { once: false });
-  onInstalledCallback.push(installed);
-  return scriptPromise;
+function removeWidget() {
+  state.widgetId && window.turnstile && window.turnstile.remove(state.widgetId);
+  state.widgetId = null;
 }
 
 interface TurnstileProps {
   sitekey: string;
-  onToken?: (token: string | null) => void;
   onError?: (error: unknown) => void;
-  children?: ReactNode;
 }
 
 export interface TurnstileHandle {
-  /**
-   * Вернуть текущий токен, если виджет уже ответил.
-   (Если ответа ещё нет — вернуть null, отправитель попросит «подтвердите».)
-   */
+  /** Вернуть текущий токен, если виджет уже ответил. */
   getToken: () => string | null;
-  /** Сбросить виджет, чтобы при повторной отправке попросился свежий токен. */
+  /** Сбросить виджет перед повторной отправкой, чтобы попросить свежий токен. */
   reset: () => void;
 }
 
-export let turnstileHandle: TurnstileHandle | null = null;
-export function useTurnstile() {
+export function useTurnstileHandle(): TurnstileHandle {
+  return {
+    getToken: () => state.token,
+    reset: () => {
+      state.token = null;
+      state.widgetId && window.turnstile && window.turnstile.reset(state.widgetId);
+      state.widgetId = null;
+    },
+  };
+}
+
+export function Turnstile({ sitekey, onError }: TurnstileProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
-  const tokenRef = useRef<string | null>(null);
 
+  // Удаление виджета при размонтировании компонента.
   useEffect(() => {
-    let disposed = false;
-    const dispose = () => {
-      widgetIdRef.current && window.turnstile && window.turnstile.remove(widgetIdRef.current);
-      widgetIdRef.current = null;
-      tokenRef.current = null;
+    return () => {
+      removeWidget();
+      state.mounted = false;
     };
-    return () => { disposed = true; dispose(); };
   }, []);
 
-  const clearToken = useCallback(() => {
-    tokenRef.current = null;
-    widgetIdRef.current && !disposed && window.turnstile && window.turnstile.reset(widgetIdRef.current);
-  }, []);
-
+  // Рендер виджета после загрузки скрипта и при изменении sitekey.
   useEffect(() => {
-    if (!sitekey || !containerRef.current) return;
+    if (!containerRef.current || !sitekey) return;
+
+    // Удаляем предыдущий виджет, если был.
+    removeWidget();
 
     ensureScript().then(() => {
       if (!window.turnstile || !containerRef.current) return;
 
-      widgetIdRef.current && window.turnstile && window.turnstile.remove(widgetIdRef.current);
-
       try {
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        state.widgetId = window.turnstile.render(containerRef.current, {
           sitekey,
-          callback: (token: string) => {
-            tokenRef.current = token;
-          },
+          callback: onToken,
           "expired-callback": clearToken,
-          "error-callback": () => {
-            // Если виджет вообще не рендерится — это видимо проблема домена/скрипта;
-            // отправка будет заблокирована сервером, но пользователь сразу увидит это.
-          },
+          "error-callback": onError,
         });
-      } catch (err: unknown) {
-        // Виджет не рендерится — сбрасываем, чтобы отправитель попросил «подтвердите».
-        tokenRef.current = null;
-        widgetIdRef.current && window.turnstile && window.turnstile.reset(widgetIdRef.current);
+        state.mounted = true;
+      } catch (err) {
+        onError?.(err);
       }
     });
-  }, [sitekey, clearToken]);
+  }, [sitekey, onError]);
 
   return (
     <div
@@ -112,19 +96,25 @@ export function useTurnstile() {
   );
 }
 
-export function useTurnstileHandle(): TurnstileHandle {
-  const reset = useCallback(() => {
-    tokenRef.current = null;
-    if (widgetIdRef.current && window.turnstile) {
-      window.turnstile.reset(widgetIdRef.current);
-    }
-  }, []);
+// Загрузка скрипта один раз.
+function ensureScript(): Promise<void> {
+  if (!realScriptPromise) {
+    realScriptPromise = new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${SCRIPT_URL}"]`);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", reject, { once: true });
+        return;
+      }
 
-  const getToken = useCallback(() => tokenRef.current, []);
-
-  // Стабильный хендл, но он живёт пока жив Turnstile; при размонтировании
-  // остаётся «мёртвым» — это нормально, страница одна.
-  turnstileHandle ??= { getToken, reset };
-  return turnstileHandle;
+      const tag = document.createElement("script");
+      tag.src = SCRIPT_URL;
+      tag.async = true;
+      tag.onload = () => resolve();
+      tag.onerror = reject;
+      document.head.appendChild(tag);
+    });
+  }
+  return realScriptPromise;
 }
-
+let realScriptPromise: Promise<void> | null = null;

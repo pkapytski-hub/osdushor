@@ -43,6 +43,9 @@ export async function publicSettings(env: Env): Promise<Response> {
   const settings = await getSettings(env);
   return ok({ settings, turnstile_sitekey: env.TURNSTILE_SITEKEY ?? "" });
 }
+export async function turnstileSitekey(env: Env): Promise<string> {
+  return env.TURNSTILE_SITEKEY ?? "";
+}
 
 export async function listNews(env: Env, url: URL): Promise<Response> {
   const { limit, offset } = pageParams(url);

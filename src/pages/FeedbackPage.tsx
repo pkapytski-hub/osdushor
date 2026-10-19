@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,7 +40,8 @@ const TOPICS = [
 ];
 
 export default function FeedbackPage() {
-  const { settings } = useSiteSettings();
+  const { settings, turnstileSitekey: turnstileSitekeyFromContext } = useSiteSettings();
+  const [turnstileSitekey, setTurnstileSitekey] = useState(turnstileSitekeyFromContext?.trim() ?? "");
   const [params] = useSearchParams();
   const requestedTopic = params.get("topic");
   const initialTopic = TOPICS.some((item) => item.value === requestedTopic) ? requestedTopic! : "general";
@@ -48,8 +49,9 @@ export default function FeedbackPage() {
   const [sent, setSent] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [captchaError, setCaptchaError] = useState<string | null>(null);
-  const turnstileSitekey = settings.turnstile_sitekey?.trim() ?? "";
   const turnstileRef = useTurnstileHandle();
+
+  useEffect(() => { setTurnstileSitekey(turnstileSitekeyFromContext?.trim() ?? ""); }, [turnstileSitekeyFromContext]);
 
   const {
     register,
