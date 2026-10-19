@@ -1,0 +1,58 @@
+{
+  "name": "osdushor-grodno",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Официальный сайт Гродненской ОСДЮШОР им. Ю. К. Культиясова",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "preinstall": "node scripts/check-node.mjs",
+    "predev": "node scripts/check-node.mjs",
+    "prebuild": "node scripts/check-node.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "dev:api": "wrangler dev --port 8787",
+    "build": "tsc --noEmit && tsc -p worker/tsconfig.json --noEmit && node scripts/build.mjs && node scripts/build-worker.mjs",
+    "build:frontend": "node scripts/build.mjs",
+    "build:worker": "node scripts/build-worker.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit && tsc -p worker/tsconfig.json --noEmit",
+    "db:init": "wrangler d1 execute osdushor-db --local --file=worker/schema.sql",
+    "db:init:remote": "wrangler d1 execute osdushor-db --remote --file=worker/schema.sql",
+    "db:studio": "wrangler d1 execute osdushor-db --local --command=\"SELECT key, value FROM site_settings\"",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run --outdir=.wrangler/dry-run"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/oswald": "^5.3.0",
+    "@hookform/resolvers": "^5.7.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.31.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-hook-form": "^7.85.0",
+    "react-router-dom": "^7.18.4",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "3.6.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261018.1",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.5",
+    "tailwindcss": "4.2.1",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "5.9.3",
+    "vite": "8.0.13",
+    "wrangler": "^4.151.1"
+  },
+  "type": "module"
+}

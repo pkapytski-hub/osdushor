@@ -1,0 +1,5 @@
+# Скопируйте в .dev.vars и замените код на свой. Файл .dev.vars не публикуется.
+APP_ORIGIN=http://127.0.0.1:5173
+ENVIRONMENT=development
+DEMO_DATA=true
+SETUP_TOKEN=change-me-local-setup-token

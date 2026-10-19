@@ -1,0 +1,281 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Oswald Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 700;
+  src: url("/fonts/oswald-cyrillic.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: "Oswald Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 700;
+  src: url("/fonts/oswald-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme {
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Oswald Variable", "Arial Narrow", system-ui, sans-serif;
+
+  --color-navy-50: #f0f4fa;
+  --color-navy-100: #dce5f2;
+  --color-navy-200: #b9cbe6;
+  --color-navy-300: #8aa8d2;
+  --color-navy-400: #5b7fbe;
+  --color-navy-500: #2a55a0;
+  --color-navy-600: #1e4180;
+  --color-navy-700: #16305f;
+  --color-navy-800: #10244a;
+  --color-navy-900: #0a1631;
+  --color-navy-950: #050b18;
+
+  --color-accent-50: #fdf2f4;
+  --color-accent-100: #fbe3e6;
+  --color-accent-300: #f0858f;
+  --color-accent-400: #e85666;
+  --color-accent-500: #e01e36;
+  --color-accent-600: #c8102e;
+  --color-accent-700: #9e0c24;
+  --color-accent-800: #7a091b;
+  --color-accent-900: #580713;
+
+  --color-graphite-300: #c3c9d4;
+  --color-graphite-400: #8a93a6;
+  --color-graphite-500: #5d6678;
+  --color-graphite-600: #4a5160;
+  --color-graphite-700: #333a48;
+  --color-graphite-800: #232833;
+  --color-graphite-900: #1b1f26;
+
+  --color-mist: #f4f6fa;
+
+  --shadow-card: 0 1px 0 0 rgb(10 22 49 / 0.06), 0 10px 30px -18px rgb(10 22 49 / 0.35);
+  --shadow-lift: 0 2px 0 0 rgb(200 16 46 / 0.9), 0 18px 40px -20px rgb(10 22 49 / 0.45);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-white text-graphite-900 font-sans antialiased;
+    font-size: 16.5px;
+    line-height: 1.6;
+  }
+  ::selection {
+    @apply bg-accent-600 text-white;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display font-semibold uppercase text-navy-900;
+    letter-spacing: 0.01em;
+  }
+  /* Заголовки внутри тёмных секций наследуют белый цвет, не теряя иерархии. */
+  .text-white :is(h1, h2, h3, h4) {
+    color: inherit;
+  }
+  img {
+    @apply max-w-full;
+  }
+}
+
+@layer components {
+  .container-site {
+    @apply mx-auto w-full max-w-[1240px] px-5 sm:px-8;
+  }
+
+  .section {
+    @apply py-14 sm:py-20;
+  }
+
+  .section-label {
+    @apply flex items-center gap-3 font-display text-[13px] font-medium uppercase tracking-[0.22em] text-accent-600;
+  }
+  .section-label::before {
+    content: "";
+    @apply block h-[3px] w-9 shrink-0 bg-accent-600;
+  }
+  .section-label-light {
+    @apply text-accent-300;
+  }
+
+  .display-1 {
+    @apply font-display font-semibold uppercase leading-[1.04] tracking-[0.005em];
+  }
+
+  .btn {
+    @apply inline-flex min-h-11 max-w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap px-6 py-3 text-center font-display text-sm font-medium uppercase tracking-[0.14em] transition-all duration-200 select-none;
+  }
+  .btn-primary {
+    @apply bg-accent-600 text-white hover:bg-accent-700 hover:shadow-lift active:translate-y-px;
+  }
+  .btn-outline {
+    @apply border-2 border-navy-900 text-navy-900 hover:bg-navy-900 hover:text-white active:translate-y-px;
+  }
+  .btn-light {
+    @apply border-2 border-white/70 text-white hover:bg-white hover:text-navy-900 active:translate-y-px;
+  }
+  .btn-ghost {
+    @apply text-navy-700 underline-offset-4 hover:text-accent-600 hover:underline;
+  }
+  .btn-sm {
+    @apply min-h-9 px-4 py-2 text-[13px];
+  }
+  /* Длинные подписи кнопок переносятся, а не выходят за пределы контейнера. */
+  .btn-wrap {
+    @apply whitespace-normal text-balance;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .card {
+    @apply relative border border-navy-100 bg-white shadow-card transition-all duration-200;
+  }
+  .card-hover {
+    @apply hover:-translate-y-1 hover:border-navy-200 hover:shadow-lift;
+  }
+  .card-hover::after {
+    content: "";
+    @apply absolute inset-x-0 bottom-0 h-[3px] scale-x-0 bg-accent-600 transition-transform duration-200;
+  }
+  .card-hover:hover::after {
+    @apply scale-x-100;
+  }
+
+  .chip {
+    @apply inline-flex cursor-pointer items-center gap-1.5 border border-navy-200 bg-white px-3 py-1.5 text-[13px] font-medium text-navy-800 transition-colors hover:border-navy-900;
+  }
+  .chip-active {
+    @apply border-navy-900 bg-navy-900 text-white hover:border-navy-900;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 font-display text-[11px] font-medium uppercase tracking-[0.14em];
+  }
+  .badge-demo {
+    @apply border border-accent-600/40 bg-accent-600/10 text-accent-700;
+  }
+  .badge-status {
+    @apply border border-current/30;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-graphite-700;
+  }
+  .field-input {
+    @apply min-h-11 w-full border border-navy-200 bg-white px-3.5 py-2.5 text-[15px] text-graphite-900 transition-colors placeholder:text-graphite-400 focus:border-navy-800;
+  }
+  .field-input[aria-invalid="true"] {
+    @apply border-accent-600;
+  }
+  textarea.field-input {
+    @apply min-h-28;
+  }
+
+  .link-underline {
+    @apply text-navy-800 underline decoration-navy-300 underline-offset-4 transition-colors hover:text-accent-600 hover:decoration-accent-600;
+  }
+}
+
+@layer utilities {
+  .bg-grid-dark {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .bg-grid-light {
+    background-image:
+      linear-gradient(rgb(10 22 49 / 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(10 22 49 / 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .clip-diagonal {
+    clip-path: polygon(0 0, 100% 0, 100% 92%, 0 100%);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .animate-fade-up {
+    animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out both;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-fade-up,
+  .animate-fade-in {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

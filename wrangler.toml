@@ -1,0 +1,27 @@
+name = "osdushor"
+main = "worker/index.ts"
+compatibility_date = "2026-10-01"
+
+# Сайт: статические файлы Vite + Worker для API, SEO и админ-панели.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "osdushor-db"
+# Замените на идентификатор, который выдаст `wrangler d1 create osdushor-db`.
+database_id = "5f2c9a4e-8d31-4b7a-9f60-2d3e8a1c7b45"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "osdushor-files"
+
+[vars]
+APP_ORIGIN = "http://127.0.0.1:5173"
+ENVIRONMENT = "production"
+
+[observability]
+enabled = true
