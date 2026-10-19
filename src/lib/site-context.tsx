@@ -18,6 +18,7 @@ const DEFAULTS: SiteSettings = {
 
 interface SiteContextValue {
   settings: SiteSettings;
+  turnstileSitekey: string;
   loading: boolean;
   error: string | null;
   reload: () => void;
@@ -25,6 +26,7 @@ interface SiteContextValue {
 
 const SiteContext = createContext<SiteContextValue>({
   settings: DEFAULTS,
+  turnstileSitekey: "",
   loading: true,
   error: null,
   reload: () => undefined,
@@ -45,6 +47,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       .settings(controller.signal)
       .then((response) => {
         setSettings({ ...DEFAULTS, ...response.settings });
+        setTurnstileSitekey(response.turnstile_sitekey_?.trim() ?? "");
         setError(null);
       })
       .catch(() => {

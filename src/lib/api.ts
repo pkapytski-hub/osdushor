@@ -95,6 +95,8 @@ const mutate = <T>(path: string, method: string, payload?: unknown) =>
 
 export interface SettingsResponse {
   settings: SiteSettings;
+  /** Открытый sitekey Turnstile для формы обратной связи; пусто, если защита выключена. */
+  turnstile_sitekey_?: string;
 }
 
 export const api = {

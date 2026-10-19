@@ -13,4 +13,8 @@ interface Env {
   SETUP_TOKEN?: string;
   DEMO_DATA?: string;
   ENVIRONMENT?: string;
+  /** Публичный sitekey Turnstile (открытая часть, лежит в [vars]). */
+  TURNSTILE_SITEKEY?: string;
+  /** Секретный ключ Turnstile — только через `wrangler secret put TURNSTILE_SECRET`. */
+  TURNSTILE_SECRET?: string;
 }

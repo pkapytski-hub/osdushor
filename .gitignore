@@ -18,3 +18,7 @@ worker-dist/
 
 # Локальные учётные данные для первичной настройки администратора.
 .setup-token
+
+# Секретный ключ Cloudflare Turnstile — не коммитить.
+# Устанавливается на сервер через: npx wrangler secret put TURNSTILE_SECRET
+.turnstile-secret

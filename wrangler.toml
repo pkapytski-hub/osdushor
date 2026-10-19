@@ -36,8 +36,13 @@ bucket_name = "osdushor-files"
 # Замените поддомен на реальный из `npx wrangler whoami`, либо задайте через
 # `wrangler secret put APP_ORIGIN`.
 APP_ORIGIN = "https://osdushor.pkapytski.workers.dev"
-# В development локально переопределяется в .dev.vars.
-ENVIRONMENT = "production"
+# В development локально переопределяется в .dev.vars.  ENVIRONMENT = "production"
+
+  # Открытый sitekey Turnstile для формы обратной связи.
+  # Секретный ключ (TURNSTILE_SECRET) задаётся отдельным секретом, он не попадает
+  # в публичный бандл и нигде не логируется.
+  TURNSTILE_SITEKEY = "0x4AAAAAAFb1MeGOHr6kQkyT"
+
 # DEMO_DATA здесь намеренно не задаётся: на проде демо-данные выключены,
 # а предупреждения о демо-режиме не показываются.
 

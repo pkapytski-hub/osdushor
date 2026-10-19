@@ -1,5 +1,6 @@
 import { fail, ipHash, nowIso, ok, rateLimit, readJson, str, bool } from "../lib/http";
 import { toCompetition, toNews, toBooleanRow } from "../lib/rows";
+import { verifyTurnstile } from "../lib/turnstile";
 
 const NEWS_CATEGORIES = new Set([
   "school",
@@ -40,7 +41,7 @@ export async function getSettings(env: Env): Promise<Record<string, string>> {
 
 export async function publicSettings(env: Env): Promise<Response> {
   const settings = await getSettings(env);
-  return ok({ settings });
+  return ok({ settings, turnstile_sitekey: env.TURNSTILE_SITEKEY ?? "" });
 }
 
 export async function listNews(env: Env, url: URL): Promise<Response> {
@@ -261,6 +262,13 @@ export async function submitFeedback(request: Request, env: Env): Promise<Respon
   if (!allowed) {
     return fail(429, "rate_limited", "Слишком много обращений. Попробуйте позже.");
   }
+
+  // Защита от автоматических отправок: если ключ включён — проверяем токен.
+  const turnstileToken = str(body.turnstile_token, 2000) || str(body["cf-turnstile-response"], 2000) || "";
+  if (!await verifyTurnstile(env, request, turnstileToken)) {
+    return fail(403, "turnstile_failed", "Проверка защиты не пройдена. Обновите страницу и попробуйте ещё раз.");
+  }
+
   await env.DB.prepare(
     `INSERT INTO feedback_messages (id, name, contact, topic, message, consent, ip_hash, user_agent)
      VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,

@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CheckCircle2, Clock, Mail, Phone, ShieldAlert } from "lucide-react";
+import { Turnstile, useTurnstileHandle } from "@/components/Turnstile";
 import { Seo } from "@/components/Seo";
 import { PageHero } from "@/components/site/PageHero";
 import { Field, FormAlert, Select, TextInput, Textarea } from "@/components/ui/Field";
@@ -46,6 +47,9 @@ export default function FeedbackPage() {
   const startedAt = useRef(Date.now());
   const [sent, setSent] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const turnstileSitekey = settings.turnstile_sitekey?.trim() ?? "";
+  const turnstileRef = useTurnstileHandle();
 
   const {
     register,
@@ -60,17 +64,27 @@ export default function FeedbackPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
+    setCaptchaError(null);
     try {
-      await api.public.feedback({ ...values, started_at: startedAt.current });
+      if (turnstileSitekey && !turnstileRef?.getToken()) {
+        setCaptchaError("Подтвердите, что вы не робот, и отправьте форму ещё раз.");
+        return;
+      }
+      await api.public.feedback({ ...values, started_at: startedAt.current, turnstile_token: turnstileSitekey ? turnstileRef?.getToken() ?? "" : undefined });
       setSent(true);
       reset({ name: "", contact: "", topic: values.topic, message: "", consent: false, company: "" });
       startedAt.current = Date.now();
     } catch (error) {
       if (error instanceof ApiError) {
-        setServerError(error.message);
-        for (const [key, message] of Object.entries(error.fields)) {
-          if (["name", "contact", "message", "consent", "topic"].includes(key)) {
-            setError(key as keyof FormValues, { type: "server", message });
+        if (error.code === "turnstile_failed") {
+          setCaptchaError("Обращение не принято: проверка не пройдена. Попробуйте ещё раз.");
+          turnstileRef?.reset();
+        } else {
+          setServerError(error.message);
+          for (const [key, message] of Object.entries(error.fields)) {
+            if (["name", "contact", "message", "consent", "topic"].includes(key)) {
+              setError(key as keyof FormValues, { type: "server", message });
+            }
           }
         }
       } else {
@@ -189,6 +203,14 @@ export default function FeedbackPage() {
                   </label>
                   {errors.consent && <p className="mt-1.5 text-xs font-medium text-accent-700" role="alert">{errors.consent.message}</p>}
                 </div>
+                {turnstileSitekey && (
+                  <div className="mt-5">
+                    {captchaError && (
+                      <p className="mb-2 text-xs font-medium text-accent-700" role="alert">{captchaError}</p>
+                    )}
+                    <Turnstile sitekey={turnstileSitekey} />
+                  </div>
+                )}
                 <div className="mt-6 flex flex-wrap items-center gap-4">
                   <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
                     {isSubmitting ? "Отправляем…" : "Отправить обращение"}
