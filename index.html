@@ -37,7 +37,13 @@
     />
     <meta property="og:locale" content="ru_RU" />
     <meta property="og:image" content="/images/og-cover.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- Заглушки для поисковиков, которые не выполняют JS. В продакшене (Worker) -->
+    <!-- они подставляются сервером из настроек; в Vite dev static они нужны. -->
+    <link rel="canonical" href="https://osdushor.pkapytski.workers.dev/" />
+    <meta property="og:url" content="https://osdushor.pkapytski.workers.dev/" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",

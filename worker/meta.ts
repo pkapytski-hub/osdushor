@@ -199,6 +199,8 @@ export function renderMeta(seo: SeoData): string {
     `<meta property="og:description" content="${description}" />`,
     `<meta property="og:url" content="${escapeHtml(seo.canonical)}" />`,
     `<meta property="og:image" content="${escapeHtml(seo.image)}" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,
