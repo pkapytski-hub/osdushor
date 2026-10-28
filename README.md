@@ -25,14 +25,33 @@ Cloudflare Worker'ом, данные хранятся в D1 (SQLite), файлы
 ## Локальный запуск
 
 ```sh
-npm ci                                   # установка зависимостей
-cp .dev.vars.example .dev.vars           # локальные переменные и SETUP_TOKEN
-npm run db:init                          # схема D1 в локальной базе
-npm run dev:api                          # Worker + API на http://127.0.0.1:8787
-npm run dev                              # Vite на http://127.0.0.1:5173 (проксирует /api)
+# 1. Зависимости и локальные переменные.
+npm ci
+cp .dev.vars.example .dev.vars
+node -e "console.log(require('node:crypto').randomBytes(24).toString('hex'))"   # код → SETUP_TOKEN
+
+# 2. Схема D1 в локальной базе. Нужна один раз: без неё API отвечает ошибками.
+npm run db:init
+
+# 3. Сборка статики. wrangler.toml отдаёт ассеты из ./dist, поэтому без этого шага
+#    `npm run dev:api` падает с `assets.directory ... does not exist`.
+npm run build:frontend
 ```
 
-Откройте `http://127.0.0.1:5173`. Админ-панель — `/admin`.
+Дальше нужны два процесса в двух отдельных терминалах: Worker и Vite не заменяют
+друг друга, и `npm run dev` сам по себе поднимает только фронтенд.
+
+```sh
+# терминал 1 — Worker, API и локальные D1/R2 на http://127.0.0.1:8787
+npm run dev:api
+
+# терминал 2 — Vite на http://127.0.0.1:5173, проксирует /api на 8787
+npm run dev
+```
+
+Откройте `http://127.0.0.1:5173`. Админ-панель — `/admin`. Если `npm run dev`
+запущен без `npm run dev:api`, страницы открываются, но запросы к `/api`
+возвращают `502` от прокси: данные, формы и админка в этом режиме не работают.
 
 Полностью собранную версию (статика + Worker) можно проверить одной командой:
 
@@ -45,6 +64,10 @@ npm run build && npm run dev:api         # http://127.0.0.1:8787
 ### Первичная настройка администратора
 
 1. В `.dev.vars` задайте случайный `SETUP_TOKEN` (не короче 16 символов).
+   Пустым его оставлять нельзя: страница `/admin/setup` откроется, но сервер вернёт
+   `503 setup_unavailable`, а `/api/auth/me` будет отдавать `setup_available: false`.
+   Заглушка `change-me-local-setup-token` из `.dev.vars.example` — тоже не значение:
+   замените её, иначе код настройки знает каждый, кто видел шаблон.
 2. Откройте `/admin/setup`, введите код из `SETUP_TOKEN`, служебный e-mail, имя и пароль
    (не короче 12 символов).
 3. Настройка работает только пока в таблице `staff` нет ни одной записи. Повторный вызов
@@ -159,10 +182,11 @@ npm run deploy
 
 | Скрипт | Действие |
 | --- | --- |
-| `npm run dev` | Vite-дев-сервер |
+| `npm run dev` | Vite-дев-сервер (только фронтенд, работает вместе с `dev:api`) |
 | `npm run dev:api` | Worker + локальная D1/R2 |
 | `npm run typecheck` | проверка типов фронтенда и воркера |
 | `npm run build` | типчек, сборка статики в `dist/`, бандл воркера в `worker-dist/` |
+| `npm run build:frontend` | только сборка статики в `dist/` (нужна перед первым `dev:api`) |
 | `npm run db:init` / `db:init:remote` | применить `worker/schema.sql` |
 | `npm run deploy` | сборка и `wrangler deploy` |
 
