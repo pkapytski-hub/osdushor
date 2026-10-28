@@ -22,3 +22,6 @@ worker-dist/
 # Секретный ключ Cloudflare Turnstile — не коммитить.
 # Устанавливается на сервер через: npx wrangler secret put TURNSTILE_SECRET
 .turnstile-secret
+
+# Временные SQL-файлы для ручной вставки данных на продем (не коммитить).
+.tmp-*.sql
