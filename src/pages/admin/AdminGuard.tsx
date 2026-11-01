@@ -20,6 +20,7 @@ import {
   Search,
   Settings,
   Shield,
+  Trophy,
   UserCog,
   Users,
   X,
@@ -46,6 +47,8 @@ const NAV_GROUPS: { title: string; items: { to: string; label: string; icon: typ
     items: [
       { to: "/admin/news", label: "Новости", icon: Newspaper },
       { to: "/admin/competitions", label: "Соревнования", icon: CalendarDays },
+      { to: "/admin/tournaments", label: "Турниры и рейтинг", icon: Trophy },
+      { to: "/admin/athletes", label: "Спортсмены", icon: Users },
       { to: "/admin/achievements", label: "Достижения", icon: Medal },
       { to: "/admin/coaches", label: "Тренеры", icon: Users },
       { to: "/admin/gallery", label: "Фотогалерея", icon: Image },

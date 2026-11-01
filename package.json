@@ -20,6 +20,8 @@
     "db:init": "wrangler d1 execute osdushor-db --local --file=worker/schema.sql",
     "db:init:remote": "wrangler d1 execute osdushor-db --remote --file=worker/schema.sql",
     "db:studio": "wrangler d1 execute osdushor-db --local --command=\"SELECT key, value FROM site_settings\"",
+    "db:athletes": "node scripts/seed-athletes.mjs",
+    "db:athletes:remote": "node scripts/seed-athletes.mjs --remote",
     "deploy": "npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run --outdir=.wrangler/dry-run"
   },

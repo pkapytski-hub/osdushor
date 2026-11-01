@@ -1,6 +1,7 @@
 import type {
   Achievement,
   AdminStats,
+  Athlete,
   AuditEntry,
   Coach,
   Competition,
@@ -13,9 +14,13 @@ import type {
   MeInfo,
   NewsItem,
   PageSeo,
+  RatingResponse,
   ScheduleEntry,
   SiteSettings,
   StaffMember,
+  Tournament,
+  TournamentDetail,
+  TournamentListResponse,
 } from "./types";
 
 export class ApiError extends Error {
@@ -125,6 +130,12 @@ export const api = {
     results: (signal?: AbortSignal) => get<{ items: Competition[] }>("/api/results", signal),
     feedback: (payload: Record<string, unknown>) =>
       mutate<{ accepted: boolean; message?: string }>("/api/feedback", "POST", payload),
+    rating: (params: { q?: string; year?: string }, signal?: AbortSignal) =>
+      get<RatingResponse>(`/api/rating${query(params)}`, signal),
+    tournaments: (params: { year?: string }, signal?: AbortSignal) =>
+      get<TournamentListResponse>(`/api/tournaments${query(params)}`, signal),
+    tournament: (id: string, signal?: AbortSignal) =>
+      get<{ item: TournamentDetail }>(`/api/tournaments/${encodeURIComponent(id)}`, signal),
   },
   auth: {
     me: (signal?: AbortSignal) => get<MeInfo>("/api/auth/me", signal),
@@ -176,6 +187,29 @@ export const api = {
     audit: (signal?: AbortSignal) => get<{ items: AuditEntry[] }>("/api/admin/audit", signal),
     demoDelete: () => mutate<{ deleted: boolean }>("/api/admin/demo", "DELETE"),
     exportUrl: "/api/admin/export",
+    tournaments: {
+      list: (signal?: AbortSignal) => get<{ items: Tournament[] }>("/api/admin/tournaments", signal),
+      item: (id: string, signal?: AbortSignal) =>
+        get<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}`, signal),
+      create: (payload: unknown) => mutate<{ item: TournamentDetail }>("/api/admin/tournaments", "POST", payload),
+      update: (id: string, payload: unknown) =>
+        mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}`, "PUT", payload),
+      remove: (id: string) => mutate<{ deleted: boolean }>(`/api/admin/tournaments/${id}`, "DELETE"),
+      setParticipants: (id: string, athleteIds: string[]) =>
+        mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/participants`, "PUT", {
+          athlete_ids: athleteIds,
+        }),
+      draw: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/draw`, "POST"),
+      playoff: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/playoff`, "POST"),
+      score: (id: string, matchId: string, scoreA: number | null, scoreB: number | null) =>
+        mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/matches/${matchId}`, "PATCH", {
+          score_a: scoreA,
+          score_b: scoreB,
+        }),
+      finalize: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/finalize`, "POST"),
+      reopen: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/reopen`, "POST"),
+    },
+    athletes: (signal?: AbortSignal) => get<{ items: Athlete[] }>("/api/admin/athletes", signal),
   },
 };
 

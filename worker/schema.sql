@@ -216,6 +216,88 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT NOT NULL
 );
 
+-- Спортсмены школы и их текущий рейтинг. Рейтинг меняется только при
+-- подведении итогов турнира, вручную его можно поправить в карточке.
+CREATE TABLE IF NOT EXISTS athletes (
+  id TEXT PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  birth_year INTEGER,
+  gender TEXT NOT NULL DEFAULT '',
+  rating REAL NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_athletes_rating ON athletes(is_active, rating DESC);
+
+-- Турнир: групповой круг или группы с плей-офф.
+CREATE TABLE IF NOT EXISTS tournaments (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  held_on TEXT NOT NULL,
+  format TEXT NOT NULL DEFAULT 'round_robin' CHECK (format IN ('round_robin', 'groups_playoff')),
+  group_size INTEGER NOT NULL DEFAULT 6,
+  playoff_size INTEGER NOT NULL DEFAULT 8,
+  coefficient REAL NOT NULL DEFAULT 0.5,
+  notes TEXT,
+  is_published INTEGER NOT NULL DEFAULT 0,
+  is_finished INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tournaments_date ON tournaments(held_on DESC);
+CREATE INDEX IF NOT EXISTS idx_tournaments_public ON tournaments(is_published, is_finished, held_on DESC);
+
+CREATE TABLE IF NOT EXISTS tournament_participants (
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  athlete_id TEXT NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  -- Лига определяется при жеребьёвке по месту в общем рейтинге школы:
+  -- 1 лига — первые 50, 2 лига — следующие 20, 3 лига — остальные.
+  league INTEGER,
+  group_no INTEGER,
+  seed INTEGER NOT NULL DEFAULT 0,
+  rating_before REAL NOT NULL DEFAULT 0,
+  rating_after REAL,
+  place INTEGER,
+  wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (tournament_id, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_participants ON tournament_participants(tournament_id, group_no);
+
+-- Одна встреча. stage: group | playoff. В плей-офф round 1 — первый круг,
+-- последний круг — финал. score_a/score_b — счёт по сетам.
+CREATE TABLE IF NOT EXISTS tournament_matches (
+  id TEXT PRIMARY KEY,
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL DEFAULT 'group' CHECK (stage IN ('group', 'playoff')),
+  group_no INTEGER,
+  round INTEGER NOT NULL DEFAULT 1,
+  slot INTEGER NOT NULL DEFAULT 0,
+  player_a TEXT NOT NULL REFERENCES athletes(id),
+  player_b TEXT NOT NULL REFERENCES athletes(id),
+  score_a INTEGER,
+  score_b INTEGER,
+  winner_id TEXT,
+  delta_a REAL,
+  delta_b REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_matches ON tournament_matches(tournament_id, stage, round, slot);
+
+CREATE TABLE IF NOT EXISTS rating_history (
+  id TEXT PRIMARY KEY,
+  athlete_id TEXT NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  held_on TEXT NOT NULL,
+  rating_before REAL NOT NULL,
+  rating_after REAL NOT NULL,
+  delta REAL NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_rating_history_athlete ON rating_history(athlete_id, held_on DESC);
+CREATE INDEX IF NOT EXISTS idx_rating_history_tournament ON rating_history(tournament_id);
+
 -- Настройки по умолчанию. Пустые значения — осознанные заготовки:
 -- администрация заполняет их через панель, публичный сайт показывает «Уточняется».
 INSERT OR IGNORE INTO site_settings (key, value) VALUES
@@ -278,4 +360,6 @@ INSERT OR IGNORE INTO page_seo (path, title, description) VALUES
   ('/kontakty', 'Контакты и спортивные базы — Гродненская ОСДЮШОР им. Ю. К. Культиясова', 'Адреса спортивных баз, телефоны, режим работы и карта проезда к Гродненской ОСДЮШОР им. Ю. К. Культиясова.'),
   ('/obratnaya-svyaz', 'Обратная связь — Гродненская ОСДЮШОР им. Ю. К. Культиясова', 'Задайте вопрос администрации школы о наборе, тренировках и соревнованиях по настольному теннису.'),
   ('/oficialnaya-informaciya', 'Официальная информация — Гродненская ОСДЮШОР им. Ю. К. Культиясова', 'Сведения об организации, режим работы, нормативные документы и обязательная информация государственного учреждения.'),
-  ('/politika-personalnyh-dannyh', 'Политика обработки персональных данных — Гродненская ОСДЮШОР им. Ю. К. Культиясова', 'Как школа обрабатывает и защищает персональные данные посетителей сайта и законных представителей воспитанников.');
+  ('/politika-personalnyh-dannyh', 'Политика обработки персональных данных — Гродненская ОСДЮШОР им. Ю. К. Культиясова', 'Как школа обрабатывает и защищает персональные данные посетителей сайта и законных представителей воспитанников.'),
+  ('/reyting', 'Рейтинг спортсменов — Гродненская ОСДЮШОР им. Ю. К. Культиясова', 'Текущий рейтинг воспитанников школы настольного тенниса в Гродно: победы, поражения и изменения после турниров.'),
+  ('/turniry', 'Турниры школы — результаты и архив — Гродненская ОСДЮШОР', 'Турниры по настольному теннису Гродненской ОСДЮШОР: сетки, группы, результаты встреч, итоговые места и изменения рейтинга.');

@@ -3,6 +3,8 @@ import { AdminGuard } from "./AdminGuard";
 import DashboardPage from "./DashboardPage";
 import ResourceListPage from "./ResourceListPage";
 import ResourceFormPage from "./ResourceFormPage";
+import TournamentsAdminPage from "./TournamentsAdminPage";
+import TournamentEditorPage from "./TournamentEditorPage";
 import SettingsPage from "./SettingsPage";
 import SeoAdminPage from "./SeoAdminPage";
 import StaffPage from "./StaffPage";
@@ -13,6 +15,7 @@ import LoginPage from "./LoginPage";
 import SetupPage from "./SetupPage";
 
 const RESOURCE_ROUTES = [
+  "athletes",
   "news",
   "competitions",
   "achievements",
@@ -40,6 +43,9 @@ export default function AdminApp() {
         {RESOURCE_ROUTES.map((resource) => (
           <Route key={`${resource}-edit`} path={`${resource}/:id`} element={<ResourceFormPage resourceKey={resource} />} />
         ))}
+        <Route path="tournaments" element={<TournamentsAdminPage />} />
+        <Route path="tournaments/new" element={<TournamentEditorPage />} />
+        <Route path="tournaments/:id" element={<TournamentEditorPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="seo" element={<SeoAdminPage />} />
         <Route path="staff" element={<StaffPage />} />

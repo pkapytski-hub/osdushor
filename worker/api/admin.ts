@@ -15,8 +15,9 @@ import { upload } from "./files";
 import { uniqueSlug } from "../lib/slugs";
 import { toBooleanRow, toCompetition, toNews } from "../lib/rows";
 import { removeDemo, seedDemo } from "../demo";
+import { handleTournamentsAdmin } from "./tournaments";
 
-type FieldKind = "text" | "longtext" | "bool" | "int" | "datetime" | "date" | "time" | "url";
+type FieldKind = "text" | "longtext" | "bool" | "int" | "float" | "datetime" | "date" | "time" | "url";
 
 interface FieldSpec {
   kind: FieldKind;
@@ -39,6 +40,18 @@ interface ResourceDef {
 const WEEKDAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
 const RESOURCES: Record<string, ResourceDef> = {
+  athletes: {
+    table: "athletes",
+    order: "rating DESC, full_name",
+    entity: "athlete",
+    fields: {
+      full_name: { kind: "text", required: true, max: 160 },
+      birth_year: { kind: "int", nullable: true },
+      gender: { kind: "text", max: 8 },
+      rating: { kind: "float" },
+      is_active: { kind: "bool" },
+    },
+  },
   news: {
     table: "news",
     order: "published_at DESC",
@@ -221,6 +234,16 @@ function coerce(resource: string, def: ResourceDef, body: Record<string, unknown
       values[key] = raw === "" || raw === null || raw === undefined ? null : int(raw, 0);
       continue;
     }
+    if (spec.kind === "float") {
+      const numeric = raw === "" || raw === null || raw === undefined ? 0 : Number(raw);
+      if (!Number.isFinite(numeric)) {
+        errors[key] = "Укажите число.";
+        values[key] = 0;
+      } else {
+        values[key] = Math.round(numeric * 100) / 100;
+      }
+      continue;
+    }
     if (key === "age_categories") {
       const list = Array.isArray(raw)
         ? raw
@@ -393,11 +416,12 @@ export async function handleAdmin(
 ): Promise<Response> {
   const user = await requireUser(request, env);
   if (request.method !== "GET" && request.method !== "HEAD") assertMutationAllowed(request, env);
-  const rest = url.pathname.replace(/^\/api\/admin\/?/, "");
-  const [resource, id] = rest.split("/");
+  const segments = url.pathname.replace(/^\/api\/admin\/?/, "").split("/").filter(Boolean);
+  const [resource, id] = segments;
   if (!resource) return fail(404, "not_found", "Раздел не найден.");
 
   if (resource === "upload") return upload(request, env, user);
+  if (resource === "tournaments") return handleTournamentsAdmin(request, env, user, segments.slice(1));
   if (resource === "stats") {
     if (request.method !== "GET") return fail(405, "method_not_allowed", "Метод не поддерживается.");
     return stats(env, user);
@@ -720,6 +744,11 @@ function emailOf(row: Record<string, unknown>): string {
 async function exportData(env: Env): Promise<Response> {
   const tables = [
     "site_settings",
+    "athletes",
+    "tournaments",
+    "tournament_participants",
+    "tournament_matches",
+    "rating_history",
     "news",
     "competitions",
     "coaches",

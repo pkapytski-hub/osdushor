@@ -243,6 +243,137 @@ export interface AdminStats {
   demo_mode: boolean;
 }
 
+export interface Athlete {
+  id: string;
+  full_name: string;
+  birth_year: number | null;
+  gender: string;
+  rating: number;
+  is_active: boolean | number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AthleteRating extends Athlete {
+  place: number;
+  /** Лига по месту в общем рейтинге школы: 1, 2 или 3. */
+  league: number;
+}
+
+export type TournamentFormat = "round_robin" | "groups_playoff";
+
+export const TOURNAMENT_FORMATS: { value: TournamentFormat; label: string; hint: string }[] = [
+  { value: "round_robin", label: "Круговой турнир в группах", hint: "Все играют с каждым в своей группе." },
+  { value: "groups_playoff", label: "Группы + плей-офф", hint: "После групп сильнейшие выходят в сетку." },
+];
+
+export interface Tournament {
+  id: string;
+  title: string;
+  held_on: string;
+  format: TournamentFormat;
+  group_size: number;
+  playoff_size: number;
+  coefficient: number;
+  notes: string | null;
+  is_published: boolean;
+  is_finished: boolean;
+  created_at?: string;
+  updated_at?: string;
+  participants?: number;
+  matches?: number;
+  played?: number;
+  winner?: string | null;
+}
+
+export interface TournamentParticipant {
+  athlete_id: string;
+  full_name: string;
+  birth_year: number | null;
+  /** Лига по месту в общем рейтинге школы: 1, 2 или 3. Влияет только на время турнира. До жеребьёвки — null. */
+  league: number | null;
+  group_no: number | null;
+  seed: number;
+  rating_before: number;
+  rating_after: number | null;
+  place: number | null;
+  wins: number;
+  losses: number;
+  projected_rating?: number | null;
+  projected_delta?: number | null;
+}
+
+export interface TournamentMatch {
+  id: string;
+  stage: "group" | "playoff";
+  group_no: number | null;
+  round: number;
+  slot: number;
+  player_a: string;
+  player_b: string;
+  player_a_name: string;
+  player_b_name: string;
+  score_a: number | null;
+  score_b: number | null;
+  winner_id: string | null;
+  delta_a: number | null;
+  delta_b: number | null;
+}
+
+export interface TournamentStanding extends TournamentParticipant {
+  played: number;
+  wins: number;
+  losses: number;
+  sets_for: number;
+  sets_against: number;
+  diff: number;
+}
+
+export interface TournamentGroup {
+  group_no: number;
+  standings: TournamentStanding[];
+  matches: TournamentMatch[];
+}
+
+export interface TournamentPlayoffRound {
+  round: number;
+  matches: TournamentMatch[];
+}
+
+/** Лига — справочная информация: она определяет только время начала турнира. */
+export interface TournamentLeague {
+  league: number;
+  title: string;
+  start_time: string;
+  participants: number;
+  matches: number;
+  played: number;
+}
+
+export interface TournamentDetail {
+  tournament: Tournament;
+  participants: TournamentParticipant[];
+  leagues: TournamentLeague[];
+  groups: TournamentGroup[];
+  playoff: TournamentPlayoffRound[];
+  group_done: boolean;
+  can_playoff: boolean;
+  can_finalize: boolean;
+  champion: TournamentParticipant | null;
+  match_count: number;
+  played_count: number;
+}
+
+export interface RatingResponse {
+  items: AthleteRating[];
+  years: number[];
+}
+
+export interface TournamentListResponse {
+  items: Tournament[];
+  years: string[];
+}
+
 export interface ListResult<T> {
   items: T[];
   total: number;

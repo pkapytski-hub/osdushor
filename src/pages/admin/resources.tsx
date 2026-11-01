@@ -75,6 +75,47 @@ const publishColumn: AdminColumn = {
 };
 
 export const RESOURCES: Record<string, ResourceConfig> = {
+  athletes: {
+    key: "athletes",
+    title: "Спортсмены и рейтинг",
+    singular: "спортсмена",
+    description: "Список воспитанников и их текущий рейтинг. Рейтинг пересчитывается автоматически после турниров.",
+    titleField: "full_name",
+    defaults: {
+      full_name: "",
+      birth_year: new Date().getFullYear() - 10,
+      gender: "",
+      rating: 0,
+      is_active: true,
+    },
+    columns: [
+      { key: "full_name", label: "Спортсмен" },
+      { key: "birth_year", label: "Год рождения" },
+      { key: "rating", label: "Рейтинг", render: (item) => Number(item.rating ?? 0).toFixed(2) },
+      {
+        key: "is_active",
+        label: "В списках",
+        render: (item) => (item.is_active ? "Да" : "Нет"),
+        hideOnMobile: true,
+      },
+    ],
+    fields: [
+      { name: "full_name", label: "Фамилия и имя", type: "text", required: true, span: 2, max: 160 },
+      { name: "birth_year", label: "Год рождения", type: "number", hint: "Например: 2013." },
+      {
+        name: "gender",
+        label: "Пол",
+        type: "select",
+        options: [
+          { value: "", label: "Не указан" },
+          { value: "m", label: "Мужской" },
+          { value: "f", label: "Женский" },
+        ],
+      },
+      { name: "rating", label: "Текущий рейтинг", type: "number", hint: "Можно поправить вручную, если рейтинг уже был до сайта." },
+      { name: "is_active", label: "Показывать в рейтинге и списках участников", type: "checkbox" },
+    ],
+  },
   news: {
     key: "news",
     title: "Новости",

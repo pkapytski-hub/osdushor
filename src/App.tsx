@@ -17,6 +17,9 @@ const NewsDetailPage = lazy(() => import("@/pages/NewsDetailPage"));
 const CompetitionsPage = lazy(() => import("@/pages/CompetitionsPage"));
 const CompetitionDetailPage = lazy(() => import("@/pages/CompetitionDetailPage"));
 const ResultsPage = lazy(() => import("@/pages/ResultsPage"));
+const RatingPage = lazy(() => import("@/pages/RatingPage"));
+const TournamentsPage = lazy(() => import("@/pages/TournamentsPage"));
+const TournamentDetailPage = lazy(() => import("@/pages/TournamentDetailPage"));
 const AchievementsPage = lazy(() => import("@/pages/AchievementsPage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const DocumentsPage = lazy(() => import("@/pages/DocumentsPage"));
@@ -44,6 +47,9 @@ export default function App() {
             <Route path="kalendar" element={<CompetitionsPage />} />
             <Route path="kalendar/:slug" element={<CompetitionDetailPage />} />
             <Route path="rezultaty" element={<ResultsPage />} />
+            <Route path="reyting" element={<RatingPage />} />
+            <Route path="turniry" element={<TournamentsPage />} />
+            <Route path="turniry/:id" element={<TournamentDetailPage />} />
             <Route path="sportsmeny" element={<AchievementsPage />} />
             <Route path="fotogalereya" element={<GalleryPage />} />
             <Route path="dokumenty" element={<DocumentsPage />} />

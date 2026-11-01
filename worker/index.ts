@@ -19,6 +19,7 @@ import {
 } from "./api/public";
 import { changePassword, login, logout, me, setup } from "./api/auth";
 import { handleAdmin } from "./api/admin";
+import { getTournament, listRating, listTournaments } from "./api/tournaments";
 import { serveFile } from "./api/files";
 import { serveSpa } from "./meta";
 import { robots, sitemap } from "./sitemap";
@@ -86,6 +87,12 @@ async function apiRoute(request: Request, env: Env, url: URL): Promise<Response>
   if (head === "schedule" && isRead) return listSchedule(env);
   if (head === "history" && isRead) return listHistory(env);
   if (head === "results" && isRead) return listResults(env);
+  if (head === "rating" && isRead) return listRating(env, url);
+  if (head === "tournaments") {
+    if (rest.length === 0 && isRead) return listTournaments(env, url);
+    if (rest.length === 1 && isRead) return getTournament(env, decodeURIComponent(rest[0]));
+    return fail(405, "method_not_allowed", "Метод не поддерживается.");
+  }
   if (head === "feedback") {
     if (method === "POST") return submitFeedback(request, env);
     return fail(405, "method_not_allowed", "Отправьте форму методом POST.");

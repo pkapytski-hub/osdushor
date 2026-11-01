@@ -15,6 +15,13 @@ export async function ensureSchema(env: Env): Promise<void> {
         .filter(Boolean)
         .map((statement) => env.DB.prepare(statement));
       await env.DB.batch(statements);
+      // Колонка появилась позже самой таблицы: на уже развёрнутой базе
+      // добавляем её отдельно, ошибку «duplicate column» просто пропускаем.
+      try {
+        await env.DB.prepare("ALTER TABLE tournament_participants ADD COLUMN league INTEGER").run();
+      } catch {
+        /* колонка уже есть */
+      }
     })().catch((error) => {
       schemaPromise = null;
       throw error;
