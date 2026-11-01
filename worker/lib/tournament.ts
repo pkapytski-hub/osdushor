@@ -52,25 +52,10 @@ export function leagueStartTime(league: number): string {
 export const GROUP_MIN_SIZE = 5;
 export const GROUP_MAX_SIZE = 6;
 
-/**
- * Длина встречи задаётся размером группы: время турнира ограничено, и чем
- * больше людей в группе, тем короче встречи. Вчетвером успевают играть до
- * 7 партий, при пяти-шести человеках — до 5, в группе на семь — до 3.
- * Так на человека выходит 4–5 игр (в группе из 7 — 6 коротких).
- */
-export function bestOfForGroup(size: number): number {
-  if (size <= 4) return 7;
-  if (size <= 6) return 5;
-  return 3;
-}
-
 /** Сколько партий нужно выиграть, чтобы победить: 3 из 5, 4 из 7, 2 из 3. */
 export function setsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1;
 }
-
-/** Плей-офф играется до 5 партий: встреч там мало, время позволяет. */
-export const PLAYOFF_BEST_OF = 5;
 
 /**
  * Сколько человек попадёт в каждую группу. Групп ровно столько, сколько нужно

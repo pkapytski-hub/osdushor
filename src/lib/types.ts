@@ -274,6 +274,8 @@ export interface Tournament {
   format: TournamentFormat;
   group_size: number;
   playoff_size: number;
+  /** Длина встречи: до 3, 5 или 7 партий (2, 3 или 4 до победы). */
+  best_of: number;
   coefficient: number;
   notes: string | null;
   is_published: boolean;

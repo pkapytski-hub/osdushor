@@ -25,6 +25,7 @@ interface Settings {
   format: TournamentFormat;
   group_size: number;
   playoff_size: number;
+  best_of: number;
   coefficient: number;
   notes: string;
   is_published: boolean;
@@ -36,9 +37,17 @@ const EMPTY_SETTINGS: Settings = {
   format: "round_robin",
   group_size: 6,
   playoff_size: 8,
+  best_of: 5,
   coefficient: 0.5,
   notes: "",
   is_published: false,
+};
+
+/** Какие счёта возможны при разной длине встречи. */
+const BEST_OF_SCORES: Record<number, string> = {
+  3: "2:0, 2:1",
+  5: "3:0, 3:1, 3:2",
+  7: "4:0, 4:1, 4:2, 4:3",
 };
 
 type Scores = Record<string, { a: string; b: string }>;
@@ -182,6 +191,7 @@ export default function TournamentEditorPage() {
         format: item.tournament.format,
         group_size: item.tournament.group_size,
         playoff_size: item.tournament.playoff_size,
+        best_of: item.tournament.best_of,
         coefficient: item.tournament.coefficient,
         notes: item.tournament.notes ?? "",
         is_published: item.tournament.is_published,
@@ -505,7 +515,7 @@ export default function TournamentEditorPage() {
           <Field
             label="Размер группы"
             htmlFor="tournament-group"
-            hint="По правилам школы в группе 5 или 6 человек. Участники делятся подряд по рейтингу, группы получаются максимально ровными; лиги могут смешиваться. Длина встречи зависит от группы: 5–6 человек — до 5 партий, 7 — до 3, 4 — до 7."
+            hint="По правилам школы в группе 5 или 6 человек. Участники делятся подряд по рейтингу, группы получаются максимально ровными; лиги могут смешиваться."
           >
             <Select
               id="tournament-group"
@@ -517,6 +527,26 @@ export default function TournamentEditorPage() {
             >
               {[5, 6].map((size) => (
                 <option key={size} value={size}>{size}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Длина встречи"
+            htmlFor="tournament-best-of"
+            hint="Не зависит от числа участников: встреча идёт до 3, 5 или 7 партий. Победитель берёт 2, 3 или 4 партии (2:0 и 2:1, 3:0–3:2 или 4:0–4:3), за каждый выигранный сет — 1 очко."
+          >
+            <Select
+              id="tournament-best-of"
+              value={String(settings.best_of)}
+              disabled={finished}
+              onChange={(event) =>
+                setSettings((current) => ({ ...current, best_of: Number(event.target.value) || 5 }))
+              }
+            >
+              {[3, 5, 7].map((bestOf) => (
+                <option key={bestOf} value={bestOf}>
+                  до {bestOf} партий — {BEST_OF_SCORES[bestOf]}
+                </option>
               ))}
             </Select>
           </Field>

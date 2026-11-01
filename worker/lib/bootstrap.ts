@@ -32,6 +32,12 @@ export async function ensureSchema(env: Env): Promise<void> {
           /* колонка уже есть */
         }
       }
+      // Длину встречи (3, 5 или 7 партий) стали выбирать в настройках турнира.
+      try {
+        await env.DB.prepare("ALTER TABLE tournaments ADD COLUMN best_of INTEGER NOT NULL DEFAULT 5").run();
+      } catch {
+        /* колонка уже есть */
+      }
     })().catch((error) => {
       schemaPromise = null;
       throw error;

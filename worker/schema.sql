@@ -238,6 +238,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
   format TEXT NOT NULL DEFAULT 'round_robin' CHECK (format IN ('round_robin', 'groups_playoff')),
   group_size INTEGER NOT NULL DEFAULT 6,
   playoff_size INTEGER NOT NULL DEFAULT 8,
+  -- Длина встречи выбирается в настройках: до 3, 5 или 7 партий (2, 3 или 4 до победы).
+  best_of INTEGER NOT NULL DEFAULT 5,
   coefficient REAL NOT NULL DEFAULT 0.5,
   notes TEXT,
   is_published INTEGER NOT NULL DEFAULT 0,

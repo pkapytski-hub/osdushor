@@ -2,7 +2,6 @@ import { ApiProblem, bool, fail, int, ok, readJson, str, uuid } from "../lib/htt
 import { audit, type SessionUser } from "../lib/auth";
 import {
   allGroupMatchesPlayed,
-  bestOfForGroup,
   computePlaces,
   drawGroups,
   GROUP_MAX_SIZE,
@@ -13,7 +12,6 @@ import {
   leagueTitle,
   nextPlayoffRound,
   planFinalize,
-  PLAYOFF_BEST_OF,
   qualifiers,
   seededPairs,
   setsToWin,
@@ -25,6 +23,9 @@ import {
 export const TOURNAMENT_FORMATS = ["round_robin", "groups_playoff"] as const;
 export type TournamentFormat = (typeof TOURNAMENT_FORMATS)[number];
 
+/** Длина встречи выбирается в настройках турнира, а не зависит от числа участников. */
+export const BEST_OF_OPTIONS: number[] = [3, 5, 7];
+
 interface TournamentRow extends Record<string, unknown> {
   id: string;
   title: string;
@@ -32,6 +33,7 @@ interface TournamentRow extends Record<string, unknown> {
   format: TournamentFormat;
   group_size: number;
   playoff_size: number;
+  best_of: number;
   coefficient: number;
   notes: string | null;
   is_published: number;
@@ -60,6 +62,7 @@ function mapTournament(row: Record<string, unknown>): TournamentRow {
     format: (row.format === "groups_playoff" ? "groups_playoff" : "round_robin") as TournamentFormat,
     group_size: Number(row.group_size ?? 6),
     playoff_size: Number(row.playoff_size ?? 8),
+    best_of: BEST_OF_OPTIONS.includes(Number(row.best_of)) ? Number(row.best_of) : 5,
     coefficient: Number(row.coefficient ?? 0.5),
     notes: row.notes == null ? null : String(row.notes),
     is_published: Number(row.is_published ?? 0),
@@ -150,18 +153,17 @@ async function tournamentView(env: Env, data: FullTournament) {
   const groupNumbers = [...new Set(groupMatchesList.map((match) => match.group_no).filter((value): value is number => value != null))].sort(
     (a, b) => a - b,
   );
-  // Длину встречи задаёт размер группы: 5–6 человек — до 5 партий (4–5 игр
-  // на человека), 4 человека — до 7 партий, 7 человек — до 3 партий.
+  // Длину встречи выбирают в настройках турнира: до 3, 5 или 7 партий —
+  // одинаково для всех, независимо от размера группы.
   const groups = groupNumbers.map((groupNo) => {
     const playerCount = participants.filter((participant) => participant.group_no === groupNo).length;
-    const bestOf = bestOfForGroup(playerCount);
     return {
       group_no: groupNo,
       standings: standings(participants, groupMatchesList, groupNo),
       matches: groupMatchesList.filter((match) => match.group_no === groupNo),
       player_count: playerCount,
-      best_of: bestOf,
-      sets_to_win: setsToWin(bestOf),
+      best_of: tournament.best_of,
+      sets_to_win: setsToWin(tournament.best_of),
     };
   });
 
@@ -170,8 +172,8 @@ async function tournamentView(env: Env, data: FullTournament) {
     .map((round) => ({
       round,
       matches: playoffMatches.filter((match) => match.round === round),
-      best_of: PLAYOFF_BEST_OF,
-      sets_to_win: setsToWin(PLAYOFF_BEST_OF),
+      best_of: tournament.best_of,
+      sets_to_win: setsToWin(tournament.best_of),
     }));
 
   const groupDone = groupMatchesList.length > 0 && allGroupMatchesPlayed(groupMatchesList);
@@ -379,6 +381,7 @@ function tournamentSettings(body: Record<string, unknown>): {
   const format = str(body.format, 30);
   const groupSize = int(body.group_size, 6);
   const playoffSize = int(body.playoff_size, 8);
+  const bestOf = int(body.best_of, 5);
   const coefficient = Number(body.coefficient);
   const notes = str(body.notes, 4_000);
   const errors: Record<string, string> = {};
@@ -389,6 +392,7 @@ function tournamentSettings(body: Record<string, unknown>): {
     errors.group_size = `Размер группы: ${GROUP_MIN_SIZE} или ${GROUP_MAX_SIZE} человек.`;
   }
   if (![2, 4, 8, 16].includes(playoffSize)) errors.playoff_size = "Плей-офф: 2, 4, 8 или 16 участников.";
+  if (!BEST_OF_OPTIONS.includes(bestOf)) errors.best_of = "Встреча: до 3, 5 или 7 партий.";
   if (!Number.isFinite(coefficient) || coefficient <= 0 || coefficient > 5) {
     errors.coefficient = "Коэффициент турнира: больше 0 и не больше 5.";
   }
@@ -399,6 +403,7 @@ function tournamentSettings(body: Record<string, unknown>): {
       format,
       group_size: groupSize,
       playoff_size: playoffSize,
+      best_of: bestOf,
       coefficient: Math.round(coefficient * 100) / 100,
       notes: notes || null,
     },
@@ -412,8 +417,8 @@ async function createTournament(env: Env, user: SessionUser, request: Request): 
   if (Object.keys(errors).length > 0) throw new ApiProblem(400, "validation_failed", "Проверьте данные турнира.", errors);
   const id = uuid();
   await env.DB.prepare(
-    `INSERT INTO tournaments (id, title, held_on, format, group_size, playoff_size, coefficient, notes, is_published)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tournaments (id, title, held_on, format, group_size, playoff_size, best_of, coefficient, notes, is_published)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -422,6 +427,7 @@ async function createTournament(env: Env, user: SessionUser, request: Request): 
       values.format,
       values.group_size,
       values.playoff_size,
+      values.best_of,
       values.coefficient,
       values.notes,
       bool(body.is_published) ? 1 : 0,
@@ -445,9 +451,10 @@ async function updateTournament(env: Env, user: SessionUser, id: string, request
   const structural =
     values.format !== tournament.format ||
     Number(values.group_size) !== tournament.group_size ||
-    Number(values.playoff_size) !== tournament.playoff_size;
+    Number(values.playoff_size) !== tournament.playoff_size ||
+    Number(values.best_of) !== tournament.best_of;
   await env.DB.prepare(
-    `UPDATE tournaments SET title = ?, held_on = ?, format = ?, group_size = ?, playoff_size = ?,
+    `UPDATE tournaments SET title = ?, held_on = ?, format = ?, group_size = ?, playoff_size = ?, best_of = ?,
        coefficient = ?, notes = ?, is_published = ?, updated_at = datetime('now') WHERE id = ?`,
   )
     .bind(
@@ -456,6 +463,7 @@ async function updateTournament(env: Env, user: SessionUser, id: string, request
       values.format,
       values.group_size,
       values.playoff_size,
+      values.best_of,
       values.coefficient,
       values.notes,
       bool(body.is_published) ? 1 : 0,
@@ -602,17 +610,6 @@ async function drawPlayoff(env: Env, user: SessionUser, id: string): Promise<Res
   return ok({ item: updated ? await tournamentView(env, updated) : null });
 }
 
-/** Сколько человек в группе встречи: от этого зависит длина встречи. */
-async function groupSize(env: Env, tournamentId: string, groupNo: number | null): Promise<number> {
-  if (groupNo == null) return 0;
-  const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM tournament_participants WHERE tournament_id = ? AND group_no = ?",
-  )
-    .bind(tournamentId, groupNo)
-    .first<{ n: number }>();
-  return Number(row?.n ?? 0);
-}
-
 async function updateMatch(
   env: Env,
   user: SessionUser,
@@ -622,15 +619,13 @@ async function updateMatch(
 ): Promise<Response> {
   const existing = await env.DB.prepare("SELECT * FROM tournaments WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!existing) return fail(404, "not_found", "Турнир не найден.");
-  checkTournamentEditable(mapTournament(existing));
+  const tournament = mapTournament(existing);
+  checkTournamentEditable(tournament);
   const target = await env.DB.prepare("SELECT stage, group_no FROM tournament_matches WHERE id = ? AND tournament_id = ?")
     .bind(matchId, id)
     .first<{ stage: string; group_no: number | null }>();
   if (!target) return fail(404, "not_found", "Встреча не найдена.");
-  const bestOf =
-    target.stage === "playoff"
-      ? PLAYOFF_BEST_OF
-      : bestOfForGroup(await groupSize(env, id, target.group_no));
+  const bestOf = tournament.best_of;
   const winSets = setsToWin(bestOf);
   const body = await readJson(request);
   const empty = body.score_a === null && body.score_b === null;
