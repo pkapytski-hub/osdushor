@@ -1,486 +1,588 @@
 {
-  "source": "РЕЙТИНГ.xlsx, лист текущего турнира (24 окт)",
-  "imported_on": "2026-10-30",
+  "source": "РЕЙТИНГ.xlsx, лист текущего турнира (1 ноября): 1 лига — 50, 2 лига — 20, 3 лига — 27",
+  "imported_on": "2026-11-01",
   "athletes": [
     {
       "full_name": "Ленец Даниил",
       "birth_year": 2011,
-      "rating": 616.9
+      "gender": "m",
+      "rating": 616.91
     },
     {
       "full_name": "Шульга Татьяна",
       "birth_year": 2009,
-      "rating": 599.2
+      "gender": "f",
+      "rating": 612.55
     },
     {
       "full_name": "Костюкевич Ксения",
       "birth_year": 2007,
-      "rating": 572.1
-    },
-    {
-      "full_name": "Демьянович Егор",
-      "birth_year": 2012,
-      "rating": 561.5
+      "gender": "f",
+      "rating": 572.06
     },
     {
       "full_name": "Новик Дарья",
       "birth_year": 2010,
-      "rating": 539.5
+      "gender": "f",
+      "rating": 554.61
+    },
+    {
+      "full_name": "Демьянович Егор",
+      "birth_year": 2012,
+      "gender": "m",
+      "rating": 548.82
     },
     {
       "full_name": "Минич Елена",
       "birth_year": 2012,
-      "rating": 535.2
+      "gender": "f",
+      "rating": 541.92
     },
     {
       "full_name": "Кондрат Алёна",
       "birth_year": 2009,
-      "rating": 525.3
+      "gender": "f",
+      "rating": 534.32
     },
     {
       "full_name": "Малиновская Нина",
       "birth_year": 2008,
-      "rating": 517.0
+      "gender": "f",
+      "rating": 517
     },
     {
       "full_name": "Левин Геннадий",
       "birth_year": 2013,
-      "rating": 516.1
-    },
-    {
-      "full_name": "Цитко Кира",
-      "birth_year": 2008,
-      "rating": 483.1
+      "gender": "m",
+      "rating": 516.07
     },
     {
       "full_name": "Ключник Андрей",
       "birth_year": 2014,
-      "rating": 476.3
+      "gender": "m",
+      "rating": 484.69
     },
     {
-      "full_name": "Гузень Иван",
-      "birth_year": 2011,
-      "rating": 475.4
-    },
-    {
-      "full_name": "Гаврилов Назар",
-      "birth_year": 2014,
-      "rating": 473.2
-    },
-    {
-      "full_name": "Гуркова Варвара",
-      "birth_year": 2013,
-      "rating": 472.4
+      "full_name": "Цитко Кира",
+      "birth_year": 2008,
+      "gender": "f",
+      "rating": 483.13
     },
     {
       "full_name": "Янчук Максим",
       "birth_year": 2015,
-      "rating": 461.2
+      "gender": "m",
+      "rating": 480.71
+    },
+    {
+      "full_name": "Гузень Иван",
+      "birth_year": 2011,
+      "gender": "m",
+      "rating": 476.94
+    },
+    {
+      "full_name": "Гуркова Варвара",
+      "birth_year": 2013,
+      "gender": "f",
+      "rating": 474.55
     },
     {
       "full_name": "Снопко Каролина",
       "birth_year": 2014,
-      "rating": 455.2
+      "gender": "f",
+      "rating": 473.12
     },
     {
-      "full_name": "Закревский Иван",
+      "full_name": "Стребкова Александра",
+      "birth_year": 2011,
+      "gender": "f",
+      "rating": 469.09
+    },
+    {
+      "full_name": "Гаврилов Назар",
       "birth_year": 2014,
-      "rating": 440.8
-    },
-    {
-      "full_name": "Струпинский Роман",
-      "birth_year": 2012,
-      "rating": 439.8
+      "gender": "m",
+      "rating": 467.1
     },
     {
       "full_name": "Пантюк Захар",
       "birth_year": 2014,
-      "rating": 437.6
+      "gender": "m",
+      "rating": 445.82
+    },
+    {
+      "full_name": "Закревский Иван",
+      "birth_year": 2014,
+      "gender": "m",
+      "rating": 440.81
     },
     {
       "full_name": "Курьян Данила",
       "birth_year": 2015,
-      "rating": 426.8
+      "gender": "m",
+      "rating": 437.31
+    },
+    {
+      "full_name": "Струпинский Роман",
+      "birth_year": 2012,
+      "gender": "m",
+      "rating": 433.11
     },
     {
       "full_name": "Бовшевич Павел",
       "birth_year": 2014,
-      "rating": 421.0
+      "gender": "m",
+      "rating": 417.96
     },
     {
       "full_name": "Карташев Антон",
       "birth_year": 2015,
-      "rating": 409.4
+      "gender": "m",
+      "rating": 416.31
     },
     {
       "full_name": "Лис Арина",
       "birth_year": 2012,
-      "rating": 401.4
+      "gender": "f",
+      "rating": 404.79
     },
     {
       "full_name": "Кадач Арсений",
       "birth_year": 2011,
+      "gender": "m",
       "rating": 392.7
-    },
-    {
-      "full_name": "Фомин Максим",
-      "birth_year": 2017,
-      "rating": 379.6
     },
     {
       "full_name": "Савко Александр",
       "birth_year": 2016,
-      "rating": 372.8
+      "gender": "m",
+      "rating": 388.13
     },
     {
-      "full_name": "Синкевич Генрих",
-      "birth_year": 2011,
-      "rating": 350.8
+      "full_name": "Фомин Максим",
+      "birth_year": 2017,
+      "gender": "m",
+      "rating": 379.56
     },
     {
       "full_name": "Цитко Анна",
       "birth_year": 2013,
-      "rating": 350.4
+      "gender": "f",
+      "rating": 363.42
     },
     {
       "full_name": "Демьянович Алеся",
       "birth_year": 2015,
-      "rating": 348.8
-    },
-    {
-      "full_name": "Еремейчик Игнат",
-      "birth_year": 2016,
-      "rating": 347.8
-    },
-    {
-      "full_name": "Саатова Мария",
-      "birth_year": 2014,
-      "rating": 346.2
+      "gender": "f",
+      "rating": 360.81
     },
     {
       "full_name": "Касьян Влад",
       "birth_year": 2013,
-      "rating": 339.5
+      "gender": "m",
+      "rating": 358.93
     },
     {
-      "full_name": "Грецкая Дарья",
+      "full_name": "Саатова Мария",
+      "birth_year": 2014,
+      "gender": "f",
+      "rating": 349.46
+    },
+    {
+      "full_name": "Синкевич Генрих",
+      "birth_year": 2011,
+      "gender": "m",
+      "rating": 342.57
+    },
+    {
+      "full_name": "Еремейчик Игнат",
       "birth_year": 2016,
-      "rating": 319.2
-    },
-    {
-      "full_name": "Жуковский Алексей",
-      "birth_year": 2015,
-      "rating": 318.7
-    },
-    {
-      "full_name": "Костюкевич Дарина",
-      "birth_year": 2015,
-      "rating": 314.9
+      "gender": "m",
+      "rating": 339.9
     },
     {
       "full_name": "Копко Элина",
       "birth_year": 2014,
-      "rating": 313.3
+      "gender": "f",
+      "rating": 324.12
+    },
+    {
+      "full_name": "Грецкая Дарья",
+      "birth_year": 2016,
+      "gender": "f",
+      "rating": 319.21
+    },
+    {
+      "full_name": "Костюкевич Дарина",
+      "birth_year": 2015,
+      "gender": "f",
+      "rating": 318.7
+    },
+    {
+      "full_name": "Жуковский Алексей",
+      "birth_year": 2015,
+      "gender": "m",
+      "rating": 318.66
     },
     {
       "full_name": "Хроменкова Маргарита",
       "birth_year": 2015,
-      "rating": 311.9
+      "gender": "f",
+      "rating": 308.3
     },
     {
       "full_name": "Исмаилов Роман",
       "birth_year": 2015,
-      "rating": 307.0
+      "gender": "m",
+      "rating": 307
     },
     {
       "full_name": "Белоусов Александр",
       "birth_year": 2016,
-      "rating": 303.8
+      "gender": "m",
+      "rating": 303.84
     },
     {
       "full_name": "Болошко Милана",
       "birth_year": 2012,
-      "rating": 298.9
+      "gender": "f",
+      "rating": 297.5
     },
     {
       "full_name": "Маргина Мария",
       "birth_year": 2013,
+      "gender": "f",
       "rating": 294.6
-    },
-    {
-      "full_name": "Войханская Мария",
-      "birth_year": 2013,
-      "rating": 281.9
-    },
-    {
-      "full_name": "Синкевич Эмилия",
-      "birth_year": 2014,
-      "rating": 273.2
     },
     {
       "full_name": "Шевчук Вера",
       "birth_year": 2017,
-      "rating": 266.4
+      "gender": "f",
+      "rating": 279.18
+    },
+    {
+      "full_name": "Синкевич Эмилия",
+      "birth_year": 2014,
+      "gender": "f",
+      "rating": 277.07
+    },
+    {
+      "full_name": "Войханская Мария",
+      "birth_year": 2013,
+      "gender": "f",
+      "rating": 270.32
     },
     {
       "full_name": "Ярмантович Максим",
       "birth_year": 2016,
-      "rating": 260.1
-    },
-    {
-      "full_name": "Ашихмин Артем",
-      "birth_year": 2015,
-      "rating": 239.0
-    },
-    {
-      "full_name": "Кот Вера",
-      "birth_year": 2016,
-      "rating": 227.0
+      "gender": "m",
+      "rating": 260.11
     },
     {
       "full_name": "Рыжко Кирилл",
       "birth_year": 2016,
-      "rating": 222.5
+      "gender": "m",
+      "rating": 246.1
+    },
+    {
+      "full_name": "Ашихмин Артем",
+      "birth_year": 2015,
+      "gender": "m",
+      "rating": 239
     },
     {
       "full_name": "Билида Агата",
       "birth_year": 2016,
-      "rating": 211.9
+      "gender": "f",
+      "rating": 230.81
+    },
+    {
+      "full_name": "Кот Вера",
+      "birth_year": 2016,
+      "gender": "f",
+      "rating": 217.5
     },
     {
       "full_name": "Гуринова Есения",
       "birth_year": 2016,
-      "rating": 171.8
+      "gender": "f",
+      "rating": 171.81
     },
     {
       "full_name": "Буйницкая Варвара",
       "birth_year": 2018,
-      "rating": 139.4
+      "gender": "f",
+      "rating": 147.19
     },
     {
       "full_name": "Лазарчук Илья",
       "birth_year": 2017,
-      "rating": 124.4
+      "gender": "m",
+      "rating": 135.52
     },
     {
       "full_name": "Бахарь Есения",
       "birth_year": 2016,
-      "rating": 109.9
-    },
-    {
-      "full_name": "Шлапик Николай",
-      "birth_year": 2017,
-      "rating": 109.1
+      "gender": "f",
+      "rating": 117.1
     },
     {
       "full_name": "Лукашевич Марк",
       "birth_year": 2016,
-      "rating": 106.1
+      "gender": "m",
+      "rating": 115.03
+    },
+    {
+      "full_name": "Шлапик Николай",
+      "birth_year": 2017,
+      "gender": "m",
+      "rating": 109.11
     },
     {
       "full_name": "Деменченок Михаил",
       "birth_year": 2017,
-      "rating": 84.0
+      "gender": "m",
+      "rating": 83.98
     },
     {
       "full_name": "Якшук Полина",
       "birth_year": 2017,
-      "rating": 81.9
-    },
-    {
-      "full_name": "Кононович Елисей",
-      "birth_year": 2017,
-      "rating": 64.1
+      "gender": "f",
+      "rating": 79.81
     },
     {
       "full_name": "Шишко Анастасия",
       "birth_year": 2017,
-      "rating": 59.3
-    },
-    {
-      "full_name": "Ханько Екатерина",
-      "birth_year": 2017,
-      "rating": 52.9
-    },
-    {
-      "full_name": "Гурина Оливия",
-      "birth_year": 2015,
-      "rating": 52.3
-    },
-    {
-      "full_name": "Короткина Валерия",
-      "birth_year": 2017,
-      "rating": 45.1
-    },
-    {
-      "full_name": "Кишкель Аркадий",
-      "birth_year": 2017,
-      "rating": 44.1
-    },
-    {
-      "full_name": "Васильчук Ульяна",
-      "birth_year": 2018,
-      "rating": 42.3
+      "gender": "f",
+      "rating": 79.12
     },
     {
       "full_name": "Лисовский Андрей",
       "birth_year": 2017,
-      "rating": 40.1
+      "gender": "m",
+      "rating": 57.7
+    },
+    {
+      "full_name": "Кононович Елисей",
+      "birth_year": 2017,
+      "gender": "m",
+      "rating": 57.6
+    },
+    {
+      "full_name": "Кишкель Аркадий",
+      "birth_year": 2017,
+      "gender": "m",
+      "rating": 53.18
+    },
+    {
+      "full_name": "Ханько Екатерина",
+      "birth_year": 2017,
+      "gender": "f",
+      "rating": 52.91
+    },
+    {
+      "full_name": "Гурина Оливия",
+      "birth_year": 2015,
+      "gender": "f",
+      "rating": 52.32
+    },
+    {
+      "full_name": "Короткина Валерия",
+      "birth_year": 2017,
+      "gender": "f",
+      "rating": 46.48
+    },
+    {
+      "full_name": "Васильчук Ульяна",
+      "birth_year": 2018,
+      "gender": "f",
+      "rating": 42.3
     },
     {
       "full_name": "Машнюк Кирилл",
       "birth_year": 2018,
-      "rating": 38.0
+      "gender": "m",
+      "rating": 38
+    },
+    {
+      "full_name": "Сушко Ева",
+      "birth_year": 2017,
+      "gender": "f",
+      "rating": 36.9
     },
     {
       "full_name": "Жамайдук Андрей",
       "birth_year": 2016,
+      "gender": "m",
       "rating": 33.5
     },
     {
       "full_name": "Лоташинская Ангелина",
       "birth_year": 2017,
-      "rating": 32.5
+      "gender": "f",
+      "rating": 28.95
     },
     {
-      "full_name": "Рыжая София",
+      "full_name": "Татарникова Анна",
       "birth_year": 2018,
-      "rating": 31.4
+      "gender": "f",
+      "rating": 26
+    },
+    {
+      "full_name": "Маковецкий Евгений",
+      "birth_year": 2017,
+      "gender": "m",
+      "rating": 25.5
     },
     {
       "full_name": "Курка Антон",
       "birth_year": 2018,
-      "rating": 25.0
+      "gender": "m",
+      "rating": 25
     },
     {
       "full_name": "Броневская Арина",
       "birth_year": 2016,
+      "gender": "f",
       "rating": 23.8
     },
     {
       "full_name": "Солонгин Арсений",
       "birth_year": 2018,
+      "gender": "m",
       "rating": 23.8
     },
     {
       "full_name": "Дембицкий Александр",
       "birth_year": 2018,
-      "rating": 23.7
+      "gender": "m",
+      "rating": 23.74
     },
     {
       "full_name": "Бурак Мария",
       "birth_year": 2018,
+      "gender": "f",
       "rating": 21.2
     },
     {
-      "full_name": "Маркевич Георгий",
-      "birth_year": 2016,
-      "rating": 20.1
-    },
-    {
-      "full_name": "Соколовская Маргарита",
-      "birth_year": 2017,
-      "rating": 18.9
-    },
-    {
-      "full_name": "Татарникова Анна",
+      "full_name": "Рыжая София",
       "birth_year": 2018,
-      "rating": 17.6
-    },
-    {
-      "full_name": "Тетько Никита",
-      "birth_year": 2018,
-      "rating": 17.5
-    },
-    {
-      "full_name": "Гриб Николай",
-      "birth_year": 2018,
-      "rating": 12.5
-    },
-    {
-      "full_name": "Сушко Ева",
-      "birth_year": 2017,
-      "rating": 12.5
-    },
-    {
-      "full_name": "Кухарчик Павел",
-      "birth_year": 2018,
-      "rating": 10.0
-    },
-    {
-      "full_name": "Волкович Михаил",
-      "birth_year": 2018,
-      "rating": 9.2
-    },
-    {
-      "full_name": "Железнова София",
-      "birth_year": 2018,
-      "rating": 6.7
-    },
-    {
-      "full_name": "Анисько Анна",
-      "birth_year": 2017,
-      "rating": 5.0
-    },
-    {
-      "full_name": "Волкович Александр",
-      "birth_year": 2018,
-      "rating": 5.0
-    },
-    {
-      "full_name": "Сабко Алексей",
-      "birth_year": 2016,
-      "rating": 2.8
-    },
-    {
-      "full_name": "Говгель Дарья",
-      "birth_year": 2018,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Дырман Алексей",
-      "birth_year": 2016,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Лючевская Есения",
-      "birth_year": 2018,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Маковецкий Евгений",
-      "birth_year": 2017,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Малмыго Александрина",
-      "birth_year": 2019,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Пантюк София",
-      "birth_year": 2018,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Пенталь Кирилл",
-      "birth_year": 2017,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Соловенюк Олег",
-      "birth_year": 2019,
-      "rating": 0.0
-    },
-    {
-      "full_name": "Сычевская Виктория",
-      "birth_year": 2019,
-      "rating": 0.0
+      "gender": "f",
+      "rating": 20.5
     },
     {
       "full_name": "Шандроха Егор",
       "birth_year": 2017,
-      "rating": 0.0
+      "gender": "m",
+      "rating": 20.3
+    },
+    {
+      "full_name": "Маркевич Георгий",
+      "birth_year": 2016,
+      "gender": "m",
+      "rating": 20.13
+    },
+    {
+      "full_name": "Соколовская Маргарита",
+      "birth_year": 2017,
+      "gender": "f",
+      "rating": 18.92
+    },
+    {
+      "full_name": "Тетько Никита",
+      "birth_year": 2018,
+      "gender": "m",
+      "rating": 17.5
+    },
+    {
+      "full_name": "Анисько Анна",
+      "birth_year": 2017,
+      "gender": "f",
+      "rating": 14.2
+    },
+    {
+      "full_name": "Волкович Александр",
+      "birth_year": 2018,
+      "gender": "m",
+      "rating": 14.1
+    },
+    {
+      "full_name": "Волкович Михаил",
+      "birth_year": 2018,
+      "gender": "m",
+      "rating": 12
+    },
+    {
+      "full_name": "Сычевская Виктория",
+      "birth_year": 2019,
+      "gender": "f",
+      "rating": 10.4
+    },
+    {
+      "full_name": "Гриб Николай",
+      "birth_year": 2018,
+      "gender": "m",
+      "rating": 7.1
+    },
+    {
+      "full_name": "Железнова София",
+      "birth_year": 2018,
+      "gender": "f",
+      "rating": 6.7
+    },
+    {
+      "full_name": "Сабко Алексей",
+      "birth_year": 2016,
+      "gender": "m",
+      "rating": 2.78
+    },
+    {
+      "full_name": "Говгель Дарья",
+      "birth_year": 2018,
+      "gender": "f",
+      "rating": 0
+    },
+    {
+      "full_name": "Дырман Алексей",
+      "birth_year": 2016,
+      "gender": "m",
+      "rating": 0
+    },
+    {
+      "full_name": "Кухарчик Павел",
+      "birth_year": 2018,
+      "gender": "m",
+      "rating": 0
+    },
+    {
+      "full_name": "Лючевская Есения",
+      "birth_year": 2018,
+      "gender": "f",
+      "rating": 0
+    },
+    {
+      "full_name": "Малмыго Александрина",
+      "birth_year": 2019,
+      "gender": "f",
+      "rating": 0
+    },
+    {
+      "full_name": "Пантюк София",
+      "birth_year": 2018,
+      "gender": "f",
+      "rating": 0
+    },
+    {
+      "full_name": "Пенталь Кирилл",
+      "birth_year": 2017,
+      "gender": "m",
+      "rating": 0
+    },
+    {
+      "full_name": "Соловенюк Олег",
+      "birth_year": 2019,
+      "gender": "m",
+      "rating": 0
     }
   ]
 }

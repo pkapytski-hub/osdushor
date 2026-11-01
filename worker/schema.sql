@@ -278,6 +278,8 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   player_b TEXT NOT NULL REFERENCES athletes(id),
   score_a INTEGER,
   score_b INTEGER,
+  tech_loss_a INTEGER NOT NULL DEFAULT 0,
+  tech_loss_b INTEGER NOT NULL DEFAULT 0,
   winner_id TEXT,
   delta_a REAL,
   delta_b REAL,

@@ -3,6 +3,14 @@
 // получает (100 − разница рейтингов)/10 × коэффициент турнира, проигравший
 // теряет (100 − разница)/20 × коэффициент. При разнице 100 и больше — 0.
 
+/**
+ * Очки в круговой системе настольного тенниса: победа — 2, поражение — 1,
+ * техническое поражение — 0. В таблицу попадает сумма очков по всем встречам.
+ */
+export const WIN_POINTS = 2;
+export const LOSS_POINTS = 1;
+export const TECH_LOSS_POINTS = 0;
+
 export interface ParticipantInput {
   athlete_id: string;
   full_name: string;
@@ -40,30 +48,71 @@ export function leagueStartTime(league: number): string {
   return league === 1 ? LEAGUE_FIRST_START : LEAGUE_LATER_START;
 }
 
+/** По правилам школы в группе 5 или 6 человек. */
+export const GROUP_MIN_SIZE = 5;
+export const GROUP_MAX_SIZE = 6;
+
+/**
+ * Длина встречи задаётся размером группы: время турнира ограничено, и чем
+ * больше людей в группе, тем короче встречи. Вчетвером успевают играть до
+ * 7 партий, при пяти-шести человеках — до 5, в группе на семь — до 3.
+ * Так на человека выходит 4–5 игр (в группе из 7 — 6 коротких).
+ */
+export function bestOfForGroup(size: number): number {
+  if (size <= 4) return 7;
+  if (size <= 6) return 5;
+  return 3;
+}
+
+/** Сколько партий нужно выиграть, чтобы победить: 3 из 5, 4 из 7, 2 из 3. */
+export function setsToWin(bestOf: number): number {
+  return Math.floor(bestOf / 2) + 1;
+}
+
+/** Плей-офф играется до 5 партий: встреч там мало, время позволяет. */
+export const PLAYOFF_BEST_OF = 5;
+
+/**
+ * Сколько человек попадёт в каждую группу. Групп ровно столько, сколько нужно
+ * при лимите в 6 человек. Если при таком делении какая-то группа вышла бы
+ * меньше пяти (7–9, 13–14, 19–20 участников), группы укрупняются до семи:
+ * семь человек в группе лучше, чем три-четыре.
+ */
+export function planGroupSizes(count: number, maxSize: number = GROUP_MAX_SIZE): number[] {
+  if (count <= 0) return [];
+  const limit = Math.max(GROUP_MIN_SIZE, Math.min(GROUP_MAX_SIZE, Math.floor(maxSize) || GROUP_MAX_SIZE));
+  if (count <= limit) return [count];
+  const overshoot = GROUP_MAX_SIZE + 1;
+  let groups = Math.ceil(count / limit);
+  while (
+    groups > 1 &&
+    Math.floor(count / groups) < GROUP_MIN_SIZE &&
+    Math.ceil(count / (groups - 1)) <= overshoot
+  ) {
+    groups -= 1;
+  }
+  const base = Math.floor(count / groups);
+  const extra = count % groups;
+  return Array.from({ length: groups }, (_, index) => base + (index < extra ? 1 : 0));
+}
+
 /**
  * Группы набираются подряд по силе, без «змейки»: при 12 участниках и группе
  * по 6 первая группа — места 1–6, вторая — 7–12. Лига на жеребьёвку не влияет,
  * поэтому в одной группе могут оказаться спортсмены разных лиг.
- * Групп столько, сколько нужно при заданном размере (12 при размере 6 — это
- * две группы), а участники делятся между ними максимально ровно.
+ * Размеры групп берёт planGroupSizes: по 5–6 человек, максимально ровно.
  */
 export function drawGroups(participants: ParticipantInput[], groupSize: number): ParticipantInput[] {
-  const size = Math.max(2, Math.min(8, Math.floor(groupSize) || 6));
   const ordered = byRating(participants);
-  const count = ordered.length;
-  if (count === 0) return [];
-  const groups = Math.max(1, Math.ceil(count / size));
-  const base = Math.floor(count / groups);
-  const extra = count % groups;
+  if (ordered.length === 0) return [];
   const drawn: ParticipantInput[] = [];
   let index = 0;
-  for (let group = 0; group < groups; group += 1) {
-    const take = base + (group < extra ? 1 : 0);
+  planGroupSizes(ordered.length, groupSize).forEach((take, group) => {
     for (let position = 0; position < take; position += 1) {
       drawn.push({ ...ordered[index], group_no: group + 1, seed: position + 1 });
       index += 1;
     }
-  }
+  });
   return drawn;
 }
 
@@ -77,12 +126,16 @@ export interface MatchInput {
   player_b: string;
   score_a: number | null;
   score_b: number | null;
+  /** Техническое поражение стороны A/B: за встречу начисляется 0 очков. */
+  tech_loss_a?: boolean | number | null;
+  tech_loss_b?: boolean | number | null;
 }
 
 export interface StandingRow extends ParticipantInput {
   played: number;
   wins: number;
   losses: number;
+  points: number;
   sets_for: number;
   sets_against: number;
   diff: number;
@@ -136,8 +189,141 @@ export function matchWinner(match: MatchInput): string | null {
   return (match.score_a as number) > (match.score_b as number) ? match.player_a : match.player_b;
 }
 
+export function isTechLoss(match: MatchInput, athleteId: string): boolean {
+  if (athleteId === match.player_a) return Boolean(match.tech_loss_a);
+  if (athleteId === match.player_b) return Boolean(match.tech_loss_b);
+  return false;
+}
+
+/**
+ * Очки за встречу: 2 — победа, 1 — поражение, 0 — техническое поражение.
+ * null, если встреча ещё не сыграна.
+ */
+export function matchPoints(match: MatchInput, athleteId: string): number | null {
+  if (!hasScore(match)) return null;
+  if (isTechLoss(match, athleteId)) return TECH_LOSS_POINTS;
+  return matchWinner(match) === athleteId ? WIN_POINTS : LOSS_POINTS;
+}
+
 function seedKey(participant: ParticipantInput): number {
   return participant.seed || 1_000_000;
+}
+
+interface TieStats {
+  points: number;
+  setsFor: number;
+  setsAgainst: number;
+}
+
+/** Отношение выигранных партий к проигранным; без проигранных партий — максимум. */
+function setRatio(setsFor: number, setsAgainst: number): number {
+  if (setsAgainst === 0) return setsFor > 0 ? Number.POSITIVE_INFINITY : 1;
+  return setsFor / setsAgainst;
+}
+
+function compareRatio(left: number, right: number): number {
+  if (left === right) return 0;
+  return left > right ? -1 : 1;
+}
+
+/**
+ * Мини-таблица по встречам только между участниками с равными очками:
+ * очки в личных встречах и партии в них (правило 4.2.2).
+ */
+function headToHeadStats(matches: MatchInput[], ids: Set<string>): Map<string, TieStats> {
+  const stats = new Map<string, TieStats>();
+  for (const id of ids) stats.set(id, { points: 0, setsFor: 0, setsAgainst: 0 });
+  for (const match of matches) {
+    if (match.stage !== "group" || !hasScore(match)) continue;
+    if (!ids.has(match.player_a) || !ids.has(match.player_b)) continue;
+    const a = stats.get(match.player_a);
+    const b = stats.get(match.player_b);
+    if (!a || !b) continue;
+    const scoreA = match.score_a as number;
+    const scoreB = match.score_b as number;
+    a.points += matchPoints(match, match.player_a) ?? 0;
+    b.points += matchPoints(match, match.player_b) ?? 0;
+    a.setsFor += scoreA;
+    a.setsAgainst += scoreB;
+    b.setsFor += scoreB;
+    b.setsAgainst += scoreA;
+  }
+  return stats;
+}
+
+/**
+ * Места в группе: сначала по набранным очкам. Участники с равными очками
+ * разбираются по правилу 4.2.2 — исключительно по играм между ними:
+ * очки в личных встречах, затем отношение выигранных партий к проигранным.
+ * Если и это не разделило (например, встречи не сыграны) — общее отношение
+ * партий, затем рейтинг.
+ */
+
+/** Если личные встречи не разделили участников — общие показатели и рейтинг. */
+function finalFallback(rows: StandingRow[]): StandingRow[] {
+  return [...rows].sort(
+    (a, b) =>
+      compareRatio(setRatio(a.sets_for, a.sets_against), setRatio(b.sets_for, b.sets_against)) ||
+      b.sets_for - a.sets_for ||
+      b.rating_before - a.rating_before ||
+      a.full_name.localeCompare(b.full_name, "ru"),
+  );
+}
+
+/**
+ * Последовательное сравнение (4.2.2): внутри группы с равными очками считаем
+ * мини-таблицу личных встреч, делим по очкам в ней, внутри оставшихся равных —
+ * по отношению партий, и так же повторяем для подгрупп, пока порядок не определится.
+ */
+function rankTie(cluster: StandingRow[], matches: MatchInput[], depth: number): StandingRow[] {
+  if (cluster.length < 2) return cluster;
+  const h2h = headToHeadStats(matches, new Set(cluster.map((row) => row.athlete_id)));
+  const statsOf = (row: StandingRow): TieStats => h2h.get(row.athlete_id) ?? { points: 0, setsFor: 0, setsAgainst: 0 };
+
+  const buckets: StandingRow[][] = [];
+  for (const row of [...cluster].sort((a, b) => statsOf(b).points - statsOf(a).points)) {
+    const last = buckets[buckets.length - 1];
+    if (last && statsOf(last[0]).points === statsOf(row).points) last.push(row);
+    else buckets.push([row]);
+  }
+
+  const ordered: StandingRow[] = [];
+  for (const bucket of buckets) {
+    if (bucket.length === 1) {
+      ordered.push(bucket[0]);
+      continue;
+    }
+    if (depth >= 4) {
+      ordered.push(...finalFallback(bucket));
+      continue;
+    }
+    const ratioOf = (row: StandingRow): number => setRatio(statsOf(row).setsFor, statsOf(row).setsAgainst);
+    const ratioBuckets: StandingRow[][] = [];
+    for (const row of [...bucket].sort((a, b) => compareRatio(ratioOf(a), ratioOf(b)))) {
+      const last = ratioBuckets[ratioBuckets.length - 1];
+      if (last && ratioOf(last[0]) === ratioOf(row)) last.push(row);
+      else ratioBuckets.push([row]);
+    }
+    for (const ratioBucket of ratioBuckets) {
+      if (ratioBucket.length === 1) ordered.push(ratioBucket[0]);
+      else ordered.push(...rankTie(ratioBucket, matches, depth + 1));
+    }
+  }
+  return ordered;
+}
+
+export function rankStandings(list: StandingRow[], matches: MatchInput[]): StandingRow[] {
+  const byPoints = [...list].sort((a, b) => b.points - a.points);
+  const result: StandingRow[] = [];
+  let index = 0;
+  while (index < byPoints.length) {
+    let end = index + 1;
+    while (end < byPoints.length && byPoints[end].points === byPoints[index].points) end += 1;
+    const cluster = byPoints.slice(index, end);
+    result.push(...(cluster.length > 1 ? rankTie(cluster, matches, 0) : cluster));
+    index = end;
+  }
+  return result;
 }
 
 /** Сортировка по силе: сначала те, кто выше в текущем рейтинге. */
@@ -251,6 +437,7 @@ export function standings(participants: ParticipantInput[], matches: MatchInput[
       played: 0,
       wins: 0,
       losses: 0,
+      points: 0,
       sets_for: 0,
       sets_against: 0,
       diff: 0,
@@ -278,21 +465,16 @@ export function standings(participants: ParticipantInput[], matches: MatchInput[
       b.wins += 1;
       a.losses += 1;
     }
+    a.points += matchPoints(match, match.player_a) ?? 0;
+    b.points += matchPoints(match, match.player_b) ?? 0;
   }
   const list = [...rows.values()];
   for (const row of list) row.diff = row.sets_for - row.sets_against;
-  list.sort(
-    (a, b) =>
-      b.wins - a.wins ||
-      b.diff - a.diff ||
-      b.sets_for - a.sets_for ||
-      b.rating_before - a.rating_before ||
-      a.full_name.localeCompare(b.full_name, "ru"),
-  );
-  list.forEach((row, index) => {
+  const ranked = rankStandings(list, matches);
+  ranked.forEach((row, index) => {
     row.place = index + 1;
   });
-  return list;
+  return ranked;
 }
 
 export function allGroupMatchesPlayed(matches: MatchInput[]): boolean {

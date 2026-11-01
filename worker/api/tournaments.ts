@@ -2,16 +2,21 @@ import { ApiProblem, bool, fail, int, ok, readJson, str, uuid } from "../lib/htt
 import { audit, type SessionUser } from "../lib/auth";
 import {
   allGroupMatchesPlayed,
+  bestOfForGroup,
   computePlaces,
   drawGroups,
+  GROUP_MAX_SIZE,
+  GROUP_MIN_SIZE,
   groupMatches,
   leagueForRank,
   leagueStartTime,
   leagueTitle,
   nextPlayoffRound,
   planFinalize,
+  PLAYOFF_BEST_OF,
   qualifiers,
   seededPairs,
+  setsToWin,
   standings,
   type MatchInput,
   type ParticipantInput,
@@ -79,6 +84,8 @@ function mapMatch(row: Record<string, unknown>): MatchInput & {
     player_b: String(row.player_b),
     score_a: row.score_a == null ? null : Number(row.score_a),
     score_b: row.score_b == null ? null : Number(row.score_b),
+    tech_loss_a: Number(row.tech_loss_a ?? 0) === 1,
+    tech_loss_b: Number(row.tech_loss_b ?? 0) === 1,
     player_a_name: String(row.player_a_name ?? ""),
     player_b_name: String(row.player_b_name ?? ""),
     winner_id: row.winner_id == null ? null : String(row.winner_id),
@@ -143,15 +150,29 @@ async function tournamentView(env: Env, data: FullTournament) {
   const groupNumbers = [...new Set(groupMatchesList.map((match) => match.group_no).filter((value): value is number => value != null))].sort(
     (a, b) => a - b,
   );
-  const groups = groupNumbers.map((groupNo) => ({
-    group_no: groupNo,
-    standings: standings(participants, groupMatchesList, groupNo),
-    matches: groupMatchesList.filter((match) => match.group_no === groupNo),
-  }));
+  // Длину встречи задаёт размер группы: 5–6 человек — до 5 партий (4–5 игр
+  // на человека), 4 человека — до 7 партий, 7 человек — до 3 партий.
+  const groups = groupNumbers.map((groupNo) => {
+    const playerCount = participants.filter((participant) => participant.group_no === groupNo).length;
+    const bestOf = bestOfForGroup(playerCount);
+    return {
+      group_no: groupNo,
+      standings: standings(participants, groupMatchesList, groupNo),
+      matches: groupMatchesList.filter((match) => match.group_no === groupNo),
+      player_count: playerCount,
+      best_of: bestOf,
+      sets_to_win: setsToWin(bestOf),
+    };
+  });
 
   const playoff = [...new Set(playoffMatches.map((match) => match.round))]
     .sort((a, b) => a - b)
-    .map((round) => ({ round, matches: playoffMatches.filter((match) => match.round === round) }));
+    .map((round) => ({
+      round,
+      matches: playoffMatches.filter((match) => match.round === round),
+      best_of: PLAYOFF_BEST_OF,
+      sets_to_win: setsToWin(PLAYOFF_BEST_OF),
+    }));
 
   const groupDone = groupMatchesList.length > 0 && allGroupMatchesPlayed(groupMatchesList);
   const playoffsComplete = (() => {
@@ -234,6 +255,8 @@ async function saveScores(
   matchId: string,
   scoreA: number | null,
   scoreB: number | null,
+  techLossA = false,
+  techLossB = false,
 ): Promise<void> {
   const winner = scoreA !== null && scoreB !== null ? (scoreA > scoreB ? "a" : "b") : null;
   const match = await env.DB.prepare("SELECT * FROM tournament_matches WHERE id = ? AND tournament_id = ?")
@@ -243,9 +266,10 @@ async function saveScores(
   const winnerId =
     winner === null ? null : winner === "a" ? String(match.player_a) : String(match.player_b);
   await env.DB.prepare(
-    "UPDATE tournament_matches SET score_a = ?, score_b = ?, winner_id = ? WHERE id = ? AND tournament_id = ?",
+    `UPDATE tournament_matches SET score_a = ?, score_b = ?, winner_id = ?, tech_loss_a = ?, tech_loss_b = ?
+     WHERE id = ? AND tournament_id = ?`,
   )
-    .bind(scoreA, scoreB, winnerId, matchId, id)
+    .bind(scoreA, scoreB, winnerId, techLossA ? 1 : 0, techLossB ? 1 : 0, matchId, id)
     .run();
   if (match.stage === "playoff" && winnerId) {
     await advancePlayoff(env, id, Number(match.round ?? 1));
@@ -361,7 +385,9 @@ function tournamentSettings(body: Record<string, unknown>): {
   if (title.length < 2) errors.title = "Укажите название турнира.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(heldOn)) errors.held_on = "Укажите дату в формате ГГГГ-ММ-ДД.";
   if (!TOURNAMENT_FORMATS.includes(format as TournamentFormat)) errors.format = "Выберите формат турнира.";
-  if (groupSize < 2 || groupSize > 8) errors.group_size = "Размер группы: от 2 до 8.";
+  if (groupSize < GROUP_MIN_SIZE || groupSize > GROUP_MAX_SIZE) {
+    errors.group_size = `Размер группы: ${GROUP_MIN_SIZE} или ${GROUP_MAX_SIZE} человек.`;
+  }
   if (![2, 4, 8, 16].includes(playoffSize)) errors.playoff_size = "Плей-офф: 2, 4, 8 или 16 участников.";
   if (!Number.isFinite(coefficient) || coefficient <= 0 || coefficient > 5) {
     errors.coefficient = "Коэффициент турнира: больше 0 и не больше 5.";
@@ -576,6 +602,17 @@ async function drawPlayoff(env: Env, user: SessionUser, id: string): Promise<Res
   return ok({ item: updated ? await tournamentView(env, updated) : null });
 }
 
+/** Сколько человек в группе встречи: от этого зависит длина встречи. */
+async function groupSize(env: Env, tournamentId: string, groupNo: number | null): Promise<number> {
+  if (groupNo == null) return 0;
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM tournament_participants WHERE tournament_id = ? AND group_no = ?",
+  )
+    .bind(tournamentId, groupNo)
+    .first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
 async function updateMatch(
   env: Env,
   user: SessionUser,
@@ -586,6 +623,15 @@ async function updateMatch(
   const existing = await env.DB.prepare("SELECT * FROM tournaments WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!existing) return fail(404, "not_found", "Турнир не найден.");
   checkTournamentEditable(mapTournament(existing));
+  const target = await env.DB.prepare("SELECT stage, group_no FROM tournament_matches WHERE id = ? AND tournament_id = ?")
+    .bind(matchId, id)
+    .first<{ stage: string; group_no: number | null }>();
+  if (!target) return fail(404, "not_found", "Встреча не найдена.");
+  const bestOf =
+    target.stage === "playoff"
+      ? PLAYOFF_BEST_OF
+      : bestOfForGroup(await groupSize(env, id, target.group_no));
+  const winSets = setsToWin(bestOf);
   const body = await readJson(request);
   const empty = body.score_a === null && body.score_b === null;
   let scoreA: number | null = null;
@@ -593,11 +639,20 @@ async function updateMatch(
   if (!empty) {
     scoreA = int(body.score_a, -1);
     scoreB = int(body.score_b, -1);
-    if (scoreA < 0 || scoreA > 9 || scoreB < 0 || scoreB > 9) {
-      return fail(400, "invalid_score", "Счёт по сетам: целые числа от 0 до 9.", {
-        score_a: "От 0 до 9.",
-        score_b: "От 0 до 9.",
-      });
+    // Встреча заканчивается, когда кто-то взял winSets партий.
+    if (
+      scoreA < 0 ||
+      scoreB < 0 ||
+      scoreA > winSets ||
+      scoreB > winSets ||
+      Math.max(scoreA, scoreB) !== winSets
+    ) {
+      return fail(
+        400,
+        "invalid_score",
+        `Встреча идёт до ${bestOf} партий: победитель берёт ${winSets}, соперник — меньше.`,
+        { score_a: `До ${winSets} партий.`, score_b: `До ${winSets} партий.` },
+      );
     }
     if (scoreA === scoreB) {
       return fail(400, "invalid_score", "Счёт не может быть равным: нужен победитель.", {
@@ -607,6 +662,15 @@ async function updateMatch(
     }
   }
   await saveScores(env, id, matchId, scoreA, scoreB);
+  const techLossA = scoreA !== null && scoreB !== null && body.tech_loss_a === true;
+  const techLossB = scoreA !== null && scoreB !== null && body.tech_loss_b === true;
+  if (techLossA && techLossB) {
+    return fail(400, "invalid_score", "Техническое поражение может быть только у одной стороны.");
+  }
+  if ((techLossA && (scoreA as number) > (scoreB as number)) || (techLossB && (scoreB as number) > (scoreA as number))) {
+    return fail(400, "invalid_score", "Техническое поражение ставится проигравшей стороне.");
+  }
+  await saveScores(env, id, matchId, scoreA, scoreB, techLossA, techLossB);
   await audit(env, user, "update", "tournament_match", matchId, `${scoreA ?? "—"}:${scoreB ?? "—"}`);
   const updated = await loadTournament(env, id);
   return ok({ item: updated ? await tournamentView(env, updated) : null });
@@ -735,6 +799,7 @@ async function reopenTournament(env: Env, user: SessionUser, id: string): Promis
 export async function listRating(env: Env, url: URL): Promise<Response> {
   const query = str(url.searchParams.get("q") ?? "", 120);
   const year = str(url.searchParams.get("year") ?? "", 4);
+  const gender = str(url.searchParams.get("gender") ?? "", 1);
   const where = ["is_active = 1"];
   const params: unknown[] = [];
   if (query) {
@@ -742,8 +807,13 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
     params.push(`%${query}%`);
   }
   if (/^\d{4}$/.test(year)) {
-    where.push("birth_year = ?");
+    // Год рождения — это возрастная группа: выбранный год и все, кто моложе.
+    where.push("birth_year >= ?");
     params.push(Number(year));
+  }
+  if (gender === "m" || gender === "f") {
+    where.push("gender = ?");
+    params.push(gender);
   }
   const { results } = await env.DB.prepare(
     `SELECT id, full_name, birth_year, gender, rating FROM athletes
@@ -760,7 +830,8 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
   return ok({
     items: (results ?? []).map((row, index) => ({
       ...row,
-      place: index + 1,
+      // Место сквозное: при фильтрах номер остаётся тем же, что в общем списке.
+      place: ranks.get(String(row.id)) ?? index + 1,
       rating: Number(row.rating ?? 0),
       league: leagueForRank(ranks.get(String(row.id)) ?? Number.MAX_SAFE_INTEGER),
     })),

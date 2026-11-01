@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, Trophy, X } from "lucide-react";
+import { ChevronDown, Search, Trophy, X } from "lucide-react";
 import { Seo } from "@/components/Seo";
+import { Field, Select } from "@/components/ui/Field";
 import { PageHero } from "@/components/site/PageHero";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/site/primitives";
 import { api } from "@/lib/api";
@@ -12,13 +13,14 @@ export default function RatingPage() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [year, setYear] = useState("");
+  const [gender, setGender] = useState("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const rating = useAsync((signal) => api.public.rating({ q: query, year }, signal), [query, year]);
+  const rating = useAsync((signal) => api.public.rating({ q: query, year, gender }, signal), [query, year, gender]);
   const items = rating.data?.items ?? [];
 
   return (
@@ -74,23 +76,36 @@ export default function RatingPage() {
                 )}
               </div>
             </form>
-            {(rating.data?.years.length ?? 0) > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className={cn("chip", !year && "chip-active")} onClick={() => setYear("")}>
-                  Все годы рождения
-                </button>
-                {rating.data?.years.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={cn("chip", year === String(value) && "chip-active")}
-                    onClick={() => setYear(String(value))}
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap items-start gap-4">
+              <Field label="Пол" htmlFor="rating-gender" className="w-full sm:w-52">
+                <div className="relative">
+                  <Select id="rating-gender" value={gender} onChange={(event) => setGender(event.target.value)}>
+                    <option value="">Все</option>
+                    <option value="m">Мужской</option>
+                    <option value="f">Женский</option>
+                  </Select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-graphite-400" aria-hidden="true" />
+                </div>
+              </Field>
+              <Field
+                label="Год рождения"
+                htmlFor="rating-year"
+                className="w-full sm:w-60"
+                hint="Год означает возрастную группу: 2010 — это 2010 и моложе."
+              >
+                <div className="relative">
+                  <Select id="rating-year" value={year} onChange={(event) => setYear(event.target.value)}>
+                    <option value="">Все годы</option>
+                    {(rating.data?.years ?? []).map((value) => (
+                      <option key={value} value={String(value)}>
+                        {value} и моложе
+                      </option>
+                    ))}
+                  </Select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-graphite-400" aria-hidden="true" />
+                </div>
+              </Field>
+            </div>
           </div>
 
           <div className="mt-8">

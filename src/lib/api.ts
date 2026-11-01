@@ -130,7 +130,7 @@ export const api = {
     results: (signal?: AbortSignal) => get<{ items: Competition[] }>("/api/results", signal),
     feedback: (payload: Record<string, unknown>) =>
       mutate<{ accepted: boolean; message?: string }>("/api/feedback", "POST", payload),
-    rating: (params: { q?: string; year?: string }, signal?: AbortSignal) =>
+    rating: (params: { q?: string; year?: string; gender?: string }, signal?: AbortSignal) =>
       get<RatingResponse>(`/api/rating${query(params)}`, signal),
     tournaments: (params: { year?: string }, signal?: AbortSignal) =>
       get<TournamentListResponse>(`/api/tournaments${query(params)}`, signal),
@@ -201,10 +201,19 @@ export const api = {
         }),
       draw: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/draw`, "POST"),
       playoff: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/playoff`, "POST"),
-      score: (id: string, matchId: string, scoreA: number | null, scoreB: number | null) =>
+      score: (
+        id: string,
+        matchId: string,
+        scoreA: number | null,
+        scoreB: number | null,
+        techLossA = false,
+        techLossB = false,
+      ) =>
         mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/matches/${matchId}`, "PATCH", {
           score_a: scoreA,
           score_b: scoreB,
+          tech_loss_a: techLossA,
+          tech_loss_b: techLossB,
         }),
       finalize: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/finalize`, "POST"),
       reopen: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/reopen`, "POST"),

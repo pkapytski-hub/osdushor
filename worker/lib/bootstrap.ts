@@ -22,6 +22,16 @@ export async function ensureSchema(env: Env): Promise<void> {
       } catch {
         /* колонка уже есть */
       }
+      // Отметки технического поражения появились вместе с правилом «0 очков».
+      for (const column of ["tech_loss_a", "tech_loss_b"]) {
+        try {
+          await env.DB.prepare(
+            `ALTER TABLE tournament_matches ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`,
+          ).run();
+        } catch {
+          /* колонка уже есть */
+        }
+      }
     })().catch((error) => {
       schemaPromise = null;
       throw error;

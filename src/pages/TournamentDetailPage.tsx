@@ -3,6 +3,7 @@ import { ArrowLeft, CalendarDays, Trophy, Users } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { Breadcrumbs } from "@/components/site/PageHero";
 import { EmptyState, LoadingBlock } from "@/components/site/primitives";
+import { CrossTable } from "@/components/CrossTable";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { formatDate } from "@/lib/format";
@@ -21,49 +22,6 @@ function roundLabel(round: number, maxRound: number): string {
 function scoreText(match: TournamentMatch): string {
   if (match.score_a === null || match.score_b === null) return "—";
   return `${match.score_a}:${match.score_b}`;
-}
-
-function StandingsTable({ rows, showRating = true }: { rows: TournamentStanding[]; showRating?: boolean }) {
-  return (
-    <div className="overflow-x-auto border border-navy-100">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-mist text-[10px] uppercase tracking-[0.14em] text-graphite-500">
-          <tr>
-            <th scope="col" className="w-10 px-3 py-2.5 text-center font-medium" title="Жеребьёвочный номер в группе">№</th>
-            <th scope="col" className="w-10 px-3 py-2.5 font-medium" title="Место в группе">#</th>
-            <th scope="col" className="px-3 py-2.5 font-medium">Спортсмен</th>
-            <th scope="col" className="hidden px-3 py-2.5 font-medium sm:table-cell">Год</th>
-            <th scope="col" className="px-3 py-2.5 text-center font-medium">В</th>
-            <th scope="col" className="px-3 py-2.5 text-center font-medium">П</th>
-            <th scope="col" className="hidden px-3 py-2.5 text-center font-medium sm:table-cell">Сеты</th>
-            {showRating && <th scope="col" className="px-3 py-2.5 text-right font-medium">Рейтинг</th>}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-navy-100">
-          {rows.map((row) => (
-            <tr key={row.athlete_id} className="hover:bg-mist/40">
-              <td className="px-3 py-2.5 text-center font-display text-xs text-graphite-500">{row.seed || "—"}</td>
-              <td className="px-3 py-2.5 font-display text-navy-900">{row.place}</td>
-              <td className="px-3 py-2.5 font-medium text-navy-900">{row.full_name}</td>
-              <td className="hidden px-3 py-2.5 text-graphite-600 sm:table-cell">{row.birth_year ?? "—"}</td>
-              <td className="px-3 py-2.5 text-center">{row.wins}</td>
-              <td className="px-3 py-2.5 text-center">{row.losses}</td>
-              <td className="hidden px-3 py-2.5 text-center text-graphite-600 sm:table-cell">
-                {row.sets_for}:{row.sets_against}
-              </td>
-              {showRating && (
-                <td className="px-3 py-2.5 text-right font-display text-navy-900">
-                  {row.rating_after !== null && row.rating_after !== undefined
-                    ? row.rating_after.toFixed(2)
-                    : row.rating_before.toFixed(2)}
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }
 
 function MatchesTable({ matches }: { matches: TournamentMatch[] }) {
@@ -207,10 +165,10 @@ export default function TournamentDetailPage() {
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <h2 className="text-3xl">{item.groups.length > 1 ? `Группа ${index + 1}` : "Таблица"}</h2>
                 <span className="text-[11px] uppercase tracking-[0.14em] text-graphite-500">
-                  {group.standings.length} участников · счёт по сетам
+                  {group.standings.length} участников · встречи до {group.best_of} партий · очки 2/1/0 · при равенстве — личные встречи
                 </span>
               </div>
-              <StandingsTable rows={group.standings} />
+              <CrossTable standings={group.standings} matches={group.matches} />
               <div>
                 <h3 className="font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500 mb-3">Встречи по кругам</h3>
                 <GroupMatchesList matches={group.matches} />

@@ -77,19 +77,22 @@ for (const athlete of athletes) {
   if (!name) continue;
   const year = athlete.birth_year ?? null;
   const rating = Number(athlete.rating ?? 0);
+  const gender = String(athlete.gender ?? "").trim();
   const key = keyOf(name, year);
   if (seen.has(key)) continue;
   seen.add(key);
   const id = byKey.get(key);
   if (id) {
     updated += 1;
-    statements.push(
-      `UPDATE athletes SET ${forceRatings ? `rating = ${rating}, ` : ""}is_active = 1 WHERE id = ${quote(id)};`,
-    );
+    const assignments = [];
+    if (gender) assignments.push(`gender = ${quote(gender)}`);
+    if (forceRatings) assignments.push(`rating = ${rating}`);
+    assignments.push("is_active = 1");
+    statements.push(`UPDATE athletes SET ${assignments.join(", ")} WHERE id = ${quote(id)};`);
   } else {
     inserted += 1;
     statements.push(
-      `INSERT INTO athletes (id, full_name, birth_year, gender, rating, is_active) VALUES (${quote(randomUUID())}, ${quote(name)}, ${year ?? "NULL"}, '', ${rating}, 1);`,
+      `INSERT INTO athletes (id, full_name, birth_year, gender, rating, is_active) VALUES (${quote(randomUUID())}, ${quote(name)}, ${year ?? "NULL"}, ${quote(gender)}, ${rating}, 1);`,
     );
   }
 }

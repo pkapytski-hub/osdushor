@@ -315,6 +315,9 @@ export interface TournamentMatch {
   player_b_name: string;
   score_a: number | null;
   score_b: number | null;
+  /** Техническое поражение стороны A/B: 0 очков в таблице. */
+  tech_loss_a: boolean;
+  tech_loss_b: boolean;
   winner_id: string | null;
   delta_a: number | null;
   delta_b: number | null;
@@ -324,6 +327,8 @@ export interface TournamentStanding extends TournamentParticipant {
   played: number;
   wins: number;
   losses: number;
+  /** Сумма очков: победа — 2, поражение — 1, техническое поражение — 0. */
+  points: number;
   sets_for: number;
   sets_against: number;
   diff: number;
@@ -333,11 +338,19 @@ export interface TournamentGroup {
   group_no: number;
   standings: TournamentStanding[];
   matches: TournamentMatch[];
+  /** Сколько человек в группе: от этого зависит длина встреч. */
+  player_count: number;
+  /** Встречи в группе играются до стольких партий (7, 5 или 3). */
+  best_of: number;
+  /** Сколько партий нужно выиграть для победы. */
+  sets_to_win: number;
 }
 
 export interface TournamentPlayoffRound {
   round: number;
   matches: TournamentMatch[];
+  best_of: number;
+  sets_to_win: number;
 }
 
 /** Лига — справочная информация: она определяет только время начала турнира. */
