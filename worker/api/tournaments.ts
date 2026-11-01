@@ -524,14 +524,14 @@ async function drawTournament(env: Env, user: SessionUser, id: string): Promise<
     env.DB.prepare("DELETE FROM tournament_matches WHERE tournament_id = ?").bind(id),
     ...drawn.map((participant) =>
       env.DB.prepare(
-        "UPDATE tournament_participants SET league = ?, group_no = ? WHERE tournament_id = ? AND athlete_id = ?",
-      ).bind(participant.league, participant.group_no, id, participant.athlete_id),
+        "UPDATE tournament_participants SET league = ?, group_no = ?, seed = ? WHERE tournament_id = ? AND athlete_id = ?",
+      ).bind(participant.league, participant.group_no, participant.seed, id, participant.athlete_id),
     ),
     ...matches.map((match) =>
       env.DB.prepare(
         `INSERT INTO tournament_matches (id, tournament_id, stage, group_no, round, slot, player_a, player_b)
-         VALUES (?, ?, 'group', ?, 1, ?, ?, ?)`,
-      ).bind(uuid(), id, match.group_no, match.slot, match.player_a, match.player_b),
+         VALUES (?, ?, 'group', ?, ?, ?, ?, ?)`,
+      ).bind(uuid(), id, match.group_no, match.round, match.slot, match.player_a, match.player_b),
     ),
     env.DB.prepare("UPDATE tournaments SET updated_at = datetime('now') WHERE id = ?").bind(id),
   ];

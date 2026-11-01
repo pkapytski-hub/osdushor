@@ -60,7 +60,7 @@ export function drawGroups(participants: ParticipantInput[], groupSize: number):
   for (let group = 0; group < groups; group += 1) {
     const take = base + (group < extra ? 1 : 0);
     for (let position = 0; position < take; position += 1) {
-      drawn.push({ ...ordered[index], group_no: group + 1 });
+      drawn.push({ ...ordered[index], group_no: group + 1, seed: position + 1 });
       index += 1;
     }
   }
@@ -147,6 +147,60 @@ export function byRating(participants: ParticipantInput[]): ParticipantInput[] {
   );
 }
 
+/**
+ * Официальный порядок встреч в группе (по турам / кругам) по правилам настольного тенниса.
+ * Номера 1..N соответствуют посеву участников в группе по силе рейтинга (1 — сильнейший).
+ */
+export const GROUP_SCHEDULE_3_4: readonly (readonly [number, number])[][] = [
+  // 1 круг
+  [[1, 3], [2, 4]],
+  // 2 круг
+  [[4, 1], [3, 2]],
+  // 3 круг
+  [[1, 2], [3, 4]],
+];
+
+export const GROUP_SCHEDULE_5_6: readonly (readonly [number, number])[][] = [
+  // 1 круг
+  [[2, 4], [1, 5], [3, 6]],
+  // 2 круг
+  [[4, 1], [6, 2], [5, 3]],
+  // 3 круг
+  [[1, 3], [2, 5], [4, 6]],
+  // 4 круг
+  [[3, 2], [6, 1], [5, 4]],
+  // 5 круг
+  [[1, 2], [3, 4], [5, 6]],
+];
+
+export function getGroupRoundSchedule(count: number): readonly (readonly [number, number])[][] {
+  if (count <= 2) {
+    return [[[1, 2]]];
+  }
+  if (count <= 4) {
+    return GROUP_SCHEDULE_3_4;
+  }
+  if (count <= 6) {
+    return GROUP_SCHEDULE_5_6;
+  }
+  // Циклическая система Бергера для групп > 6 участников
+  const n = count % 2 === 0 ? count : count + 1;
+  const rounds: [number, number][][] = [];
+  const players = Array.from({ length: n - 1 }, (_, i) => i + 1);
+  for (let r = 0; r < n - 1; r += 1) {
+    const roundPairs: [number, number][] = [];
+    const p1 = players[r % players.length];
+    roundPairs.push([p1, n]);
+    for (let i = 1; i < n / 2; i += 1) {
+      const a = players[(r + i) % players.length];
+      const b = players[(r + n - 1 - i) % players.length];
+      roundPairs.push([a, b]);
+    }
+    rounds.push(roundPairs);
+  }
+  return rounds;
+}
+
 export function groupMatches(participants: ParticipantInput[]): Omit<MatchInput, "id">[] {
   const grouped = new Map<number, ParticipantInput[]>();
   for (const participant of participants) {
@@ -156,24 +210,30 @@ export function groupMatches(participants: ParticipantInput[]): Omit<MatchInput,
     grouped.set(group, list);
   }
   const matches: Omit<MatchInput, "id">[] = [];
-  let slot = 0;
   for (const [group, list] of [...grouped.entries()].sort((a, b) => a[0] - b[0])) {
     const ordered = byRating(list);
-    for (let i = 0; i < ordered.length; i += 1) {
-      for (let j = i + 1; j < ordered.length; j += 1) {
-        slot += 1;
-        matches.push({
-          stage: "group",
-          group_no: group,
-          round: 1,
-          slot,
-          player_a: ordered[i].athlete_id,
-          player_b: ordered[j].athlete_id,
-          score_a: null,
-          score_b: null,
-        });
+    const count = ordered.length;
+    if (count < 2) continue;
+    const schedule = getGroupRoundSchedule(count);
+    schedule.forEach((roundPairs, roundIndex) => {
+      const roundNum = roundIndex + 1;
+      let slot = 0;
+      for (const [aNum, bNum] of roundPairs) {
+        if (aNum <= count && bNum <= count) {
+          slot += 1;
+          matches.push({
+            stage: "group",
+            group_no: group,
+            round: roundNum,
+            slot,
+            player_a: ordered[aNum - 1].athlete_id,
+            player_b: ordered[bNum - 1].athlete_id,
+            score_a: null,
+            score_b: null,
+          });
+        }
       }
-    }
+    });
   }
   return matches;
 }

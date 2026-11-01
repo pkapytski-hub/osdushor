@@ -29,7 +29,8 @@ function StandingsTable({ rows, showRating = true }: { rows: TournamentStanding[
       <table className="w-full border-collapse text-left text-sm">
         <thead className="bg-mist text-[10px] uppercase tracking-[0.14em] text-graphite-500">
           <tr>
-            <th scope="col" className="w-10 px-3 py-2.5 font-medium">#</th>
+            <th scope="col" className="w-10 px-3 py-2.5 text-center font-medium" title="Жеребьёвочный номер в группе">№</th>
+            <th scope="col" className="w-10 px-3 py-2.5 font-medium" title="Место в группе">#</th>
             <th scope="col" className="px-3 py-2.5 font-medium">Спортсмен</th>
             <th scope="col" className="hidden px-3 py-2.5 font-medium sm:table-cell">Год</th>
             <th scope="col" className="px-3 py-2.5 text-center font-medium">В</th>
@@ -41,6 +42,7 @@ function StandingsTable({ rows, showRating = true }: { rows: TournamentStanding[
         <tbody className="divide-y divide-navy-100">
           {rows.map((row) => (
             <tr key={row.athlete_id} className="hover:bg-mist/40">
+              <td className="px-3 py-2.5 text-center font-display text-xs text-graphite-500">{row.seed || "—"}</td>
               <td className="px-3 py-2.5 font-display text-navy-900">{row.place}</td>
               <td className="px-3 py-2.5 font-medium text-navy-900">{row.full_name}</td>
               <td className="hidden px-3 py-2.5 text-graphite-600 sm:table-cell">{row.birth_year ?? "—"}</td>
@@ -81,6 +83,28 @@ function MatchesTable({ matches }: { matches: TournamentMatch[] }) {
             <span className={cn("truncate", winnerB ? "font-semibold text-navy-900" : "text-graphite-600")}>
               {match.player_b_name}
             </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GroupMatchesList({ matches }: { matches: TournamentMatch[] }) {
+  const roundNumbers = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
+  if (roundNumbers.length <= 1) {
+    return <MatchesTable matches={matches} />;
+  }
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {roundNumbers.map((round) => {
+        const roundMatches = matches.filter((m) => m.round === round);
+        return (
+          <div key={round} className="border border-navy-100 bg-white">
+            <div className="border-b border-navy-100 bg-mist px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-700">
+              {round}-й круг
+            </div>
+            <MatchesTable matches={roundMatches} />
           </div>
         );
       })}
@@ -188,10 +212,8 @@ export default function TournamentDetailPage() {
               </div>
               <StandingsTable rows={group.standings} />
               <div>
-                <h3 className="font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Встречи</h3>
-                <div className="mt-2">
-                  <MatchesTable matches={group.matches} />
-                </div>
+                <h3 className="font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500 mb-3">Встречи по кругам</h3>
+                <GroupMatchesList matches={group.matches} />
               </div>
             </div>
           ))}

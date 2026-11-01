@@ -62,6 +62,7 @@ function StandingsTable({ rows }: { rows: TournamentStanding[] }) {
       <table className="w-full border-collapse text-left text-sm">
         <thead className="bg-mist text-[10px] uppercase tracking-[0.14em] text-graphite-500">
           <tr>
+            <th scope="col" className="w-10 px-3 py-2 text-center font-medium" title="Жеребьёвочный номер в группе">№</th>
             <th scope="col" className="w-10 px-3 py-2 font-medium">#</th>
             <th scope="col" className="px-3 py-2 font-medium">Спортсмен</th>
             <th scope="col" className="px-3 py-2 text-center font-medium">В</th>
@@ -73,6 +74,7 @@ function StandingsTable({ rows }: { rows: TournamentStanding[] }) {
         <tbody className="divide-y divide-navy-100">
           {rows.map((row) => (
             <tr key={row.athlete_id}>
+              <td className="px-3 py-2 text-center font-display text-xs text-graphite-500">{row.seed || "—"}</td>
               <td className="px-3 py-2 font-display text-navy-900">{row.place}</td>
               <td className="px-3 py-2 font-medium text-navy-900">
                 {row.full_name}
@@ -567,25 +569,65 @@ export default function TournamentEditorPage() {
                   <div className="mt-4">
                     <StandingsTable rows={group.standings} />
                   </div>
-                  <h4 className="mt-6 font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Встречи</h4>
-                  <div className="mt-2 divide-y divide-navy-100 border border-navy-100">
-                    {group.matches.map((match) => (
-                      <MatchRow
-                        key={match.id}
-                        match={match}
-                        scores={scores[match.id] ?? { a: "", b: "" }}
-                        finished={finished}
-                        busy={busy}
-                        onChange={(side, value) =>
-                          setScores((current) => ({
-                            ...current,
-                            [match.id]: { ...(current[match.id] ?? { a: "", b: "" }), [side]: value },
-                          }))
-                        }
-                        onSave={() => void saveMatch(match)}
-                      />
-                    ))}
-                  </div>
+                  <h4 className="mt-6 font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Встречи по кругам</h4>
+                  {/* Группируем встречи по кругам; если круг один — обычный список */}
+                  {(() => {
+                    const roundNumbers = [...new Set(group.matches.map((m) => m.round))].sort((a, b) => a - b);
+                    if (roundNumbers.length <= 1) {
+                      return (
+                        <div className="mt-2 divide-y divide-navy-100 border border-navy-100">
+                          {group.matches.map((match) => (
+                            <MatchRow
+                              key={match.id}
+                              match={match}
+                              scores={scores[match.id] ?? { a: "", b: "" }}
+                              finished={finished}
+                              busy={busy}
+                              onChange={(side, value) =>
+                                setScores((current) => ({
+                                  ...current,
+                                  [match.id]: { ...(current[match.id] ?? { a: "", b: "" }), [side]: value },
+                                }))
+                              }
+                              onSave={() => void saveMatch(match)}
+                            />
+                          ))}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="mt-2 space-y-3">
+                        {roundNumbers.map((round) => {
+                          const roundMatches = group.matches.filter((m) => m.round === round);
+                          return (
+                            <div key={round} className="border border-navy-100">
+                              <div className="border-b border-navy-100 bg-mist px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-graphite-600">
+                                {round}-й круг
+                              </div>
+                              <div className="divide-y divide-navy-100">
+                                {roundMatches.map((match) => (
+                                  <MatchRow
+                                    key={match.id}
+                                    match={match}
+                                    scores={scores[match.id] ?? { a: "", b: "" }}
+                                    finished={finished}
+                                    busy={busy}
+                                    onChange={(side, value) =>
+                                      setScores((current) => ({
+                                        ...current,
+                                        [match.id]: { ...(current[match.id] ?? { a: "", b: "" }), [side]: value },
+                                      }))
+                                    }
+                                    onSave={() => void saveMatch(match)}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </section>
               </Fragment>
             ))}
