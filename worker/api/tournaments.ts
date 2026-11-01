@@ -11,6 +11,7 @@ import {
   leagueStartTime,
   leagueTitle,
   nextPlayoffRound,
+  planBracket,
   planFinalize,
   qualifiers,
   seededPairs,
@@ -20,7 +21,7 @@ import {
   type ParticipantInput,
 } from "../lib/tournament";
 
-export const TOURNAMENT_FORMATS = ["round_robin", "groups_playoff"] as const;
+export const TOURNAMENT_FORMATS = ["round_robin", "groups_playoff", "olympic"] as const;
 export type TournamentFormat = (typeof TOURNAMENT_FORMATS)[number];
 
 /** Длина встречи выбирается в настройках турнира, а не зависит от числа участников. */
@@ -59,7 +60,9 @@ function mapTournament(row: Record<string, unknown>): TournamentRow {
     id: String(row.id),
     title: String(row.title),
     held_on: String(row.held_on),
-    format: (row.format === "groups_playoff" ? "groups_playoff" : "round_robin") as TournamentFormat,
+    format: (row.format === "groups_playoff" || row.format === "olympic"
+      ? row.format
+      : "round_robin") as TournamentFormat,
     group_size: Number(row.group_size ?? 6),
     playoff_size: Number(row.playoff_size ?? 8),
     best_of: BEST_OF_OPTIONS.includes(Number(row.best_of)) ? Number(row.best_of) : 5,
@@ -251,12 +254,37 @@ function checkTournamentEditable(tournament: TournamentRow): void {
   }
 }
 
+/**
+ * Приводит сетку олимпийской системы к текущим результатам: добавляет новые
+ * пары и удаляет встречи, которые перестали ей соответствовать.
+ */
+async function materializeBracket(env: Env, id: string): Promise<void> {
+  const data = await loadTournament(env, id);
+  if (!data || data.tournament.format !== "olympic") return;
+  const plan = planBracket(data.participants, data.matches);
+  const statements = [
+    ...plan.remove.map((matchId) =>
+      env.DB.prepare("DELETE FROM tournament_matches WHERE id = ? AND tournament_id = ?").bind(matchId, id),
+    ),
+    ...plan.matches
+      .filter((match) => !match.id)
+      .map((match) =>
+        env.DB.prepare(
+          `INSERT INTO tournament_matches (id, tournament_id, stage, group_no, round, slot, player_a, player_b)
+           VALUES (?, ?, 'playoff', NULL, ?, ?, ?, ?)`,
+        ).bind(uuid(), id, match.round, match.slot, match.player_a, match.player_b),
+      ),
+  ];
+  if (statements.length > 0) await env.DB.batch(statements);
+}
+
 async function saveScores(
   env: Env,
   id: string,
   matchId: string,
   scoreA: number | null,
   scoreB: number | null,
+  format: TournamentFormat,
   techLossA = false,
   techLossB = false,
 ): Promise<void> {
@@ -273,7 +301,9 @@ async function saveScores(
   )
     .bind(scoreA, scoreB, winnerId, techLossA ? 1 : 0, techLossB ? 1 : 0, matchId, id)
     .run();
-  if (match.stage === "playoff" && winnerId) {
+  if (format === "olympic") {
+    await materializeBracket(env, id);
+  } else if (match.stage === "playoff" && winnerId) {
     await advancePlayoff(env, id, Number(match.round ?? 1));
   }
 }
@@ -552,8 +582,16 @@ async function drawTournament(env: Env, user: SessionUser, id: string): Promise<
     ...participant,
     league: leagueForRank(ranks.get(participant.athlete_id) ?? Number.MAX_SAFE_INTEGER),
   }));
-  const drawn = drawGroups(withLeagues, refreshed.tournament.group_size);
-  const matches = groupMatches(drawn);
+  // Олимпийская система: групп нет, все сразу попадают в сетку на вылет —
+  // расставляем участников строго по рейтингу, сильнейшие получают первый
+  // круг без соперника.
+  const olympic = refreshed.tournament.format === "olympic";
+  const drawn = olympic
+    ? [...withLeagues]
+        .sort((a, b) => b.rating_before - a.rating_before || a.full_name.localeCompare(b.full_name, "ru"))
+        .map((participant, index) => ({ ...participant, group_no: null, seed: index + 1 }))
+    : drawGroups(withLeagues, refreshed.tournament.group_size);
+  const matches = olympic ? [] : groupMatches(drawn);
   const statements = [
     env.DB.prepare("DELETE FROM tournament_matches WHERE tournament_id = ?").bind(id),
     ...drawn.map((participant) =>
@@ -570,6 +608,7 @@ async function drawTournament(env: Env, user: SessionUser, id: string): Promise<
     env.DB.prepare("UPDATE tournaments SET updated_at = datetime('now') WHERE id = ?").bind(id),
   ];
   await env.DB.batch(statements);
+  if (olympic) await materializeBracket(env, id);
   await audit(env, user, "update", "tournament_draw", id);
   const updated = await loadTournament(env, id);
   return ok({ item: updated ? await tournamentView(env, updated) : null });
@@ -656,7 +695,7 @@ async function updateMatch(
       });
     }
   }
-  await saveScores(env, id, matchId, scoreA, scoreB);
+  await saveScores(env, id, matchId, scoreA, scoreB, tournament.format);
   const techLossA = scoreA !== null && scoreB !== null && body.tech_loss_a === true;
   const techLossB = scoreA !== null && scoreB !== null && body.tech_loss_b === true;
   if (techLossA && techLossB) {
@@ -665,7 +704,7 @@ async function updateMatch(
   if ((techLossA && (scoreA as number) > (scoreB as number)) || (techLossB && (scoreB as number) > (scoreA as number))) {
     return fail(400, "invalid_score", "Техническое поражение ставится проигравшей стороне.");
   }
-  await saveScores(env, id, matchId, scoreA, scoreB, techLossA, techLossB);
+  await saveScores(env, id, matchId, scoreA, scoreB, tournament.format, techLossA, techLossB);
   await audit(env, user, "update", "tournament_match", matchId, `${scoreA ?? "—"}:${scoreB ?? "—"}`);
   const updated = await loadTournament(env, id);
   return ok({ item: updated ? await tournamentView(env, updated) : null });
@@ -682,10 +721,16 @@ async function finalizeTournament(env: Env, user: SessionUser, id: string): Prom
   if (unfinished.length > 0) {
     return fail(400, "unfinished_matches", `Осталось заполнить встреч: ${unfinished.length}.`);
   }
-  if (tournament.format === "groups_playoff") {
+  if (tournament.format !== "round_robin") {
     const playoff = matches.filter((match) => match.stage === "playoff");
     if (playoff.length === 0) {
-      return fail(400, "no_playoff", "Сначала сформируйте сетку плей-офф.");
+      return fail(
+        400,
+        "no_playoff",
+        tournament.format === "olympic"
+          ? "Сначала проведите жеребьёвку: без сетки встреч нет."
+          : "Сначала сформируйте сетку плей-офф.",
+      );
     }
     const maxRound = Math.max(...playoff.map((match) => match.round));
     const final = playoff.filter((match) => match.round === maxRound);

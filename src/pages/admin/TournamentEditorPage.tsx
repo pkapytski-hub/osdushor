@@ -512,6 +512,7 @@ export default function TournamentEditorPage() {
               ))}
             </Select>
           </Field>
+          {settings.format !== "olympic" && (
           <Field
             label="Размер группы"
             htmlFor="tournament-group"
@@ -530,6 +531,7 @@ export default function TournamentEditorPage() {
               ))}
             </Select>
           </Field>
+          )}
           <Field
             label="Длина встречи"
             htmlFor="tournament-best-of"
@@ -698,7 +700,10 @@ export default function TournamentEditorPage() {
                     onClick={() =>
                       setConfirm({
                         title: "Провести жеребьёвку?",
-                        text: "Участники будут распределены по группам подряд по рейтингу (лиги могут смешиваться), а все ранее введённые результаты удалены.",
+                        text:
+                          settings.format === "olympic"
+                            ? "Участники будут расставлены в сетку на вылет по рейтингу: сильнейшие первый круг проходят без соперника. Все ранее введённые встречи и результаты будут удалены."
+                            : "Участники будут распределены по группам подряд по рейтингу (лиги могут смешиваться), а все ранее введённые результаты удалены.",
                         label: "Провести жеребьёвку",
                         run: draw,
                       })
@@ -713,7 +718,9 @@ export default function TournamentEditorPage() {
 
           {data.match_count === 0 && data.participants.length > 0 && (
             <p className="border-l-2 border-navy-300 bg-white px-4 py-3 text-sm text-graphite-600">
-              Сохраните состав и проведите жеребьёвку — появится таблица групп и встречи.
+              {data.tournament.format === "olympic"
+                ? "Сохраните состав и проведите жеребьёвку — появится сетка на вылет."
+                : "Сохраните состав и проведите жеребьёвку — появится таблица групп и встречи."}
             </p>
           )}
 

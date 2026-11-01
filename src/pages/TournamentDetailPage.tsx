@@ -124,7 +124,11 @@ export default function TournamentDetailPage() {
             </span>
             <span className="inline-flex items-center gap-2">
               <CalendarDays size={16} className="text-accent-400" aria-hidden="true" />
-              {t.format === "groups_playoff" ? "Группы + плей-офф" : "Круговой турнир"}
+              {t.format === "groups_playoff"
+                ? "Группы + плей-офф"
+                : t.format === "olympic"
+                  ? "Олимпийская система"
+                  : "Круговой турнир"}
             </span>
             <span>Коэффициент: {t.coefficient}</span>
             {item.leagues.length > 0 && (

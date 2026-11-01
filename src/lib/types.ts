@@ -260,11 +260,12 @@ export interface AthleteRating extends Athlete {
   league: number;
 }
 
-export type TournamentFormat = "round_robin" | "groups_playoff";
+export type TournamentFormat = "round_robin" | "groups_playoff" | "olympic";
 
 export const TOURNAMENT_FORMATS: { value: TournamentFormat; label: string; hint: string }[] = [
   { value: "round_robin", label: "Круговой турнир в группах", hint: "Все играют с каждым в своей группе." },
   { value: "groups_playoff", label: "Группы + плей-офф", hint: "После групп сильнейшие выходят в сетку." },
+  { value: "olympic", label: "Олимпийская система", hint: "Сетка на вылет без групп: проигравший выбывает." },
 ];
 
 export interface Tournament {

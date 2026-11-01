@@ -52,6 +52,9 @@ export function leagueStartTime(league: number): string {
 export const GROUP_MIN_SIZE = 5;
 export const GROUP_MAX_SIZE = 6;
 
+/** Форматы турнира: круговая система, группы с плей-офф и сетка на вылет. */
+export type TournamentFormatValue = "round_robin" | "groups_playoff" | "olympic";
+
 /** Сколько партий нужно выиграть, чтобы победить: 3 из 5, 4 из 7, 2 из 3. */
 export function setsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1;
@@ -467,14 +470,16 @@ export function allGroupMatchesPlayed(matches: MatchInput[]): boolean {
   return group.length > 0 && group.every((match) => match.score_a !== null && match.score_b !== null);
 }
 
+/** Размер сетки на вылет: ближайшая степень двойки не меньше числа участников. */
+export function bracketSize(count: number): number {
+  return count <= 2 ? 2 : 2 ** Math.ceil(Math.log2(count));
+}
+
 /**
- * Порядок сеяных для сетки: пары 1–N, 2–(N−1) и так далее, но так, чтобы
- * сильнейшие встретились как можно позже. Возвращает пары по порядку.
+ * Порядок сеяных в сетке: пары 1–N, 2–(N−1) и так далее, но так, чтобы
+ * сильнейшие встретились как можно позже.
  */
-export function seededPairs(athleteIds: string[]): [string, string][] {
-  const count = athleteIds.length;
-  if (count < 2) return [];
-  const size = 2 ** Math.floor(Math.log2(count));
+export function bracketOrder(size: number): number[] {
   const order: number[] = [1];
   while (order.length < size) {
     const next: number[] = [];
@@ -484,6 +489,15 @@ export function seededPairs(athleteIds: string[]): [string, string][] {
     }
     order.splice(0, order.length, ...next);
   }
+  return order;
+}
+
+/** Пары первого круга для готового списка сеяных. */
+export function seededPairs(athleteIds: string[]): [string, string][] {
+  const count = athleteIds.length;
+  if (count < 2) return [];
+  const size = 2 ** Math.floor(Math.log2(count));
+  const order = bracketOrder(size);
   const pairs: [string, string][] = [];
   for (let i = 0; i < order.length; i += 2) {
     const first = athleteIds[order[i] - 1];
@@ -523,6 +537,77 @@ export interface FinalizePlan {
   places: Map<string, number>;
 }
 
+export interface BracketPlanMatch {
+  round: number;
+  slot: number;
+  player_a: string;
+  player_b: string;
+  /** id встречи, если она уже заведена и не устарела. */
+  id?: string;
+}
+
+export interface BracketPlan {
+  matches: BracketPlanMatch[];
+  /** Встречи, которые больше не соответствуют сетке: их нужно удалить. */
+  remove: string[];
+}
+
+/**
+ * Олимпийская система: все участники играют на вылет, групп нет. Число мест
+ * в сетке добивается до степени двойки, поэтому сильнейшие по рейтингу
+ * (seed 1, 2, …) первый круг проходят без соперника.
+ *
+ * Функция считает сетку заново по текущим результатам и поэтому же
+ * используется после каждой встречи: следующие пары появляются сами, а
+ * устаревшие (после исправления счёта) попадают в remove.
+ */
+export function planBracket(participants: ParticipantInput[], matches: MatchInput[]): BracketPlan {
+  const playoff = matches.filter((match) => match.stage === "playoff");
+  const count = participants.length;
+  if (count < 2) return { matches: [], remove: playoff.map((match) => match.id) };
+  const order = bracketOrder(bracketSize(count));
+  // Лучший по рейтингу получает первый номер посева.
+  const bySeed = new Map<number, string>();
+  [...participants]
+    .sort((a, b) => (a.seed || 999) - (b.seed || 999))
+    .forEach((participant, index) => bySeed.set(index + 1, participant.athlete_id));
+  const existing = new Map(playoff.map((match) => [`${match.round}:${match.slot}`, match]));
+  const keep = new Set<string>();
+  const plan: BracketPlanMatch[] = [];
+  // positions[i] — участник на этом месте сетки; undefined, пока победитель
+  // предыдущей встречи неизвестен.
+  let positions: (string | undefined)[] = order.map((seed) => bySeed.get(seed));
+  let round = 1;
+  while (positions.length > 1) {
+    const next: (string | undefined)[] = [];
+    for (let index = 0; index < positions.length; index += 2) {
+      const first = positions[index];
+      const second = positions[index + 1];
+      const slot = index / 2 + 1;
+      if (first && second) {
+        const found = existing.get(`${round}:${slot}`);
+        const valid = found && found.player_a === first && found.player_b === second ? found : null;
+        if (valid) keep.add(valid.id);
+        plan.push({ round, slot, player_a: first, player_b: second, id: valid?.id });
+        next.push(valid ? matchWinner(valid) ?? undefined : undefined);
+      } else {
+        // Первый круг без соперника: участник сразу проходит дальше. В более
+        // поздних кругах пустое место означает, что встреча ещё не сыграна, и
+        // поднимать кого-то наверх нельзя — иначе финал собрался бы раньше
+        // полуфиналов.
+        if (round > 1) {
+          next.push(undefined);
+          continue;
+        }
+        next.push(first ?? second);
+      }
+    }
+    positions = next;
+    round += 1;
+  }
+  return { matches: plan, remove: playoff.filter((match) => !keep.has(match.id)).map((match) => match.id) };
+}
+
 /**
  * Считает изменения рейтинга так же, как книга школы: каждая встреча берёт
  * рейтинги на начало турнира, изменения по встречам суммируются, итог
@@ -533,7 +618,7 @@ export function planFinalize(
   participants: ParticipantInput[],
   matches: MatchInput[],
   coefficient: number,
-  format: "round_robin" | "groups_playoff",
+  format: TournamentFormatValue,
 ): FinalizePlan {
   const before = new Map<string, number>();
   for (const participant of participants) before.set(participant.athlete_id, participant.rating_before);
@@ -575,7 +660,7 @@ export function planFinalize(
 export function computePlaces(
   participants: ParticipantInput[],
   matches: MatchInput[],
-  format: "round_robin" | "groups_playoff",
+  format: TournamentFormatValue,
 ): Map<string, number> {
   const result = new Map<string, number>();
   if (format === "round_robin") {

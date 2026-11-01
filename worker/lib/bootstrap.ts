@@ -38,6 +38,37 @@ export async function ensureSchema(env: Env): Promise<void> {
       } catch {
         /* колонка уже есть */
       }
+      // Формат «олимпийская система» добавился в CHECK-ограничение таблицы
+      // турниров, а SQLite не меняет CHECK на месте. На базе со старой схемой
+      // пересобираем таблицы турнира, сохраняя строки во временных таблицах:
+      // они нужны, потому что DROP родительской таблицы каскадом удаляет
+      // участников, встречи и историю рейтинга.
+      const tournamentsSql = await env.DB
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tournaments'")
+        .first<{ sql: string }>();
+      if (tournamentsSql?.sql && !tournamentsSql.sql.includes("'olympic'")) {
+        await env.DB.batch([
+          env.DB.prepare("DROP TABLE IF EXISTS _backup_participants"),
+          env.DB.prepare("DROP TABLE IF EXISTS _backup_matches"),
+          env.DB.prepare("DROP TABLE IF EXISTS _backup_rating_history"),
+          env.DB.prepare("CREATE TABLE _backup_participants AS SELECT * FROM tournament_participants"),
+          env.DB.prepare("CREATE TABLE _backup_matches AS SELECT * FROM tournament_matches"),
+          env.DB.prepare("CREATE TABLE _backup_rating_history AS SELECT * FROM rating_history"),
+          env.DB.prepare("DROP TABLE tournament_participants"),
+          env.DB.prepare("DROP TABLE tournament_matches"),
+          env.DB.prepare("DROP TABLE rating_history"),
+          env.DB.prepare("DROP TABLE tournaments"),
+        ]);
+        await env.DB.batch(statements);
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO tournament_participants SELECT * FROM _backup_participants"),
+          env.DB.prepare("INSERT INTO tournament_matches SELECT * FROM _backup_matches"),
+          env.DB.prepare("INSERT INTO rating_history SELECT * FROM _backup_rating_history"),
+          env.DB.prepare("DROP TABLE _backup_participants"),
+          env.DB.prepare("DROP TABLE _backup_matches"),
+          env.DB.prepare("DROP TABLE _backup_rating_history"),
+        ]);
+      }
     })().catch((error) => {
       schemaPromise = null;
       throw error;

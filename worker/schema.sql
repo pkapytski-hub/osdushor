@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   held_on TEXT NOT NULL,
-  format TEXT NOT NULL DEFAULT 'round_robin' CHECK (format IN ('round_robin', 'groups_playoff')),
+  format TEXT NOT NULL DEFAULT 'round_robin' CHECK (format IN ('round_robin', 'groups_playoff', 'olympic')),
   group_size INTEGER NOT NULL DEFAULT 6,
   playoff_size INTEGER NOT NULL DEFAULT 8,
   -- Длина встречи выбирается в настройках: до 3, 5 или 7 партий (2, 3 или 4 до победы).
