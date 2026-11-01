@@ -9,7 +9,9 @@ import {
 
 export const SESSION_COOKIE = "osdushor_sid";
 const SESSION_HOURS = 12;
-const PBKDF2_ITERATIONS = 210_000;
+// crypto.subtle в Workers не принимает PBKDF2 с числом итераций выше 100 000:
+// с 210 000 вход на проде падал с internal_error. Берём платформенный максимум.
+const PBKDF2_ITERATIONS = 100_000;
 
 export type Role = "admin" | "editor";
 
@@ -51,7 +53,14 @@ export async function verifyPassword(
   salt: string,
   iterations: number,
 ): Promise<boolean> {
-  const candidate = await derivePassword(password, salt, iterations);
+  let candidate: string;
+  try {
+    candidate = await derivePassword(password, salt, iterations);
+  } catch {
+    // Хеш с числом итераций выше платформенного предела проверить нельзя:
+    // считаем пароль неверным, пока администратор его не сбросит.
+    return false;
+  }
   return constantTimeEqual(candidate, hash);
 }
 

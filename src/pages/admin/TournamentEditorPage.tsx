@@ -6,6 +6,7 @@ import { ApiError, api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { AdminPageHeader, ConfirmDialog } from "./admin-ui";
 import { Field, FormAlert, Select, TextInput, Textarea } from "@/components/ui/Field";
+import { CrossTable } from "@/components/CrossTable";
 import {
   TOURNAMENT_FORMATS,
   type Athlete,
@@ -15,6 +16,8 @@ import {
   type TournamentStanding,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+// Считаем таблицу тем же кодом, что и сервер: предпросмотр не расходится с итогами.
+import { standings as computeStandings, type MatchInput } from "../../../worker/lib/tournament";
 
 interface Settings {
   title: string;
@@ -68,6 +71,7 @@ function StandingsTable({ rows }: { rows: TournamentStanding[] }) {
             <th scope="col" className="px-3 py-2 font-medium">Спортсмен</th>
             <th scope="col" className="px-3 py-2 text-center font-medium">В</th>
             <th scope="col" className="px-3 py-2 text-center font-medium">П</th>
+            <th scope="col" className="px-3 py-2 text-center font-medium" title="Победа — 2, поражение — 1, техническое поражение — 0">Очки</th>
             <th scope="col" className="hidden px-3 py-2 text-center font-medium sm:table-cell">Сеты</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">Рейтинг</th>
           </tr>
@@ -83,6 +87,7 @@ function StandingsTable({ rows }: { rows: TournamentStanding[] }) {
               </td>
               <td className="px-3 py-2 text-center">{row.wins}</td>
               <td className="px-3 py-2 text-center">{row.losses}</td>
+              <td className="px-3 py-2 text-center font-display text-navy-900">{row.points}</td>
               <td className="hidden px-3 py-2 text-center text-graphite-600 sm:table-cell">
                 {row.sets_for}:{row.sets_against}
               </td>
@@ -111,6 +116,62 @@ export default function TournamentEditorPage() {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const athletes = useAsync((signal) => api.admin.athletes(signal), [], !isNew);
+
+  // Счёт, уже набранный в полях, применяем к таблице сразу, ещё до сохранения.
+  const previewScores = useMemo(() => {
+    const result = new Map<string, { a: number; b: number }>();
+    if (!data) return result;
+    for (const match of [
+      ...data.groups.flatMap((group) => group.matches),
+      ...data.playoff.flatMap((round) => round.matches),
+    ]) {
+      const values = scores[match.id];
+      if (!values) continue;
+      const a = values.a.trim() === "" ? null : Number(values.a);
+      const b = values.b.trim() === "" ? null : Number(values.b);
+      if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) continue;
+      result.set(match.id, { a, b });
+    }
+    return result;
+  }, [data, scores]);
+
+  const previewGroups = useMemo(() => {
+    if (!data) return [] as { group_no: number; rows: TournamentStanding[] }[];
+    const matches: MatchInput[] = [
+      ...data.groups.flatMap((group) => group.matches),
+      ...data.playoff.flatMap((round) => round.matches),
+    ].map((match) => {
+      const typed = previewScores.get(match.id);
+      const flags = techLoss[match.id] ?? { a: false, b: false };
+      return {
+        id: match.id,
+        stage: match.stage,
+        group_no: match.group_no,
+        round: match.round,
+        slot: match.slot,
+        player_a: match.player_a,
+        player_b: match.player_b,
+        score_a: typed ? typed.a : match.score_a,
+        score_b: typed ? typed.b : match.score_b,
+        tech_loss_a: Boolean(match.tech_loss_a) || flags.a,
+        tech_loss_b: Boolean(match.tech_loss_b) || flags.b,
+      };
+    });
+    return data.groups.map((group) => {
+      const saved = new Map(group.standings.map((item) => [item.athlete_id, item]));
+      const rows: TournamentStanding[] = computeStandings(data.participants, matches, group.group_no).map((row) => {
+        const savedRow = saved.get(row.athlete_id);
+        const base: TournamentStanding = savedRow ?? {
+          ...row,
+          rating_after: null,
+          projected_rating: null,
+          projected_delta: null,
+        };
+        return { ...base, ...row };
+      });
+      return { group_no: group.group_no, rows };
+    });
+  }, [data, previewScores, techLoss]);
 
   const apply = (item: TournamentDetail) => {
     setData(item);
@@ -322,6 +383,28 @@ export default function TournamentEditorPage() {
   for (const participant of data?.participants ?? []) {
     leagueOfAthlete.set(participant.athlete_id, participant.league);
   }
+
+  // Встреча с учётом набранного, но ещё не сохранённого счёта — для круговой таблицы.
+  const previewMatch = (match: TournamentMatch): TournamentMatch => {
+    const typed = previewScores.get(match.id);
+    if (!typed) return match;
+    const flags = techLoss[match.id] ?? { a: false, b: false };
+    return {
+      ...match,
+      score_a: typed.a,
+      score_b: typed.b,
+      tech_loss_a: Boolean(match.tech_loss_a) || flags.a,
+      tech_loss_b: Boolean(match.tech_loss_b) || flags.b,
+      winner_id: typed.a === typed.b ? null : typed.a > typed.b ? match.player_a : match.player_b,
+      delta_a: null,
+      delta_b: null,
+    };
+  };
+
+  const isUnsaved = (match: TournamentMatch): boolean => {
+    const typed = previewScores.get(match.id);
+    return typed !== undefined && (typed.a !== match.score_a || typed.b !== match.score_b);
+  };
 
   return (
     <div className="space-y-6">
@@ -543,7 +626,7 @@ export default function TournamentEditorPage() {
                   className="field-input mt-4 max-w-sm"
                   aria-label="Поиск спортсмена"
                 />
-                <div className="mt-3 grid max-h-80 gap-1 overflow-y-auto border border-navy-100 p-2 sm:grid-cols-2">
+                <div className="mt-3 grid max-h-80 gap-1 overflow-y-auto border border-navy-100 p-2 sm:grid-cols-2 xl:grid-cols-3">
                   {filteredAthletes.map((athlete: Athlete) => (
                     <label
                       key={athlete.id}
@@ -605,15 +688,38 @@ export default function TournamentEditorPage() {
           )}
 
           {data.match_count > 0 &&
-            data.groups.map((group, index) => (
+            data.groups.map((group, index) => {
+              const live = previewGroups.find((item) => item.group_no === group.group_no);
+              const rows = live?.rows ?? group.standings;
+              const groupUnsaved = group.matches.some(isUnsaved);
+              return (
               <Fragment key={group.group_no}>
                 <section className="border border-navy-100 bg-white p-5 sm:p-6">
                   <h3 className="text-lg normal-case tracking-normal">Группа {index + 1}</h3>
                   <p className="mt-1 text-xs text-graphite-500">
                     {group.standings.length} участников · встречи до {group.best_of} партий (победа — {group.sets_to_win})
                   </p>
-                  <div className="mt-4">
-                    <StandingsTable rows={group.standings} />
+                  {groupUnsaved && (
+                    <p className="mt-3 border-l-2 border-emerald-600 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                      В таблице уже учтён введённый, но не сохранённый счёт. Нажмите ✓ у встречи, чтобы записать результат.
+                    </p>
+                  )}
+                  {/* На широком экране таблица и шахматка стоят рядом: место не простаивает. */}
+                  <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] xl:items-start">
+                    <div className="min-w-0">
+                      <StandingsTable rows={rows} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Круговая таблица</h4>
+                      <CrossTable
+                        standings={rows}
+                        matches={group.matches.map(previewMatch)}
+                        className="mt-2 border border-navy-100 bg-white"
+                      />
+                      <p className="mt-1 text-[11px] text-graphite-500 xl:hidden">
+                        На телефоне шахматку можно прокручивать вбок.
+                      </p>
+                    </div>
                   </div>
                   <h4 className="mt-6 font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Встречи по кругам</h4>
                   {/* Группируем встречи по кругам; если круг один — обычный список */}
@@ -682,7 +788,8 @@ export default function TournamentEditorPage() {
                   })()}
                 </section>
               </Fragment>
-            ))}
+              );
+            })}
 
           {data.playoff.map((round) => (
             <Fragment key={round.round}>
@@ -815,9 +922,21 @@ function MatchRow({
 }) {
   const winnerA = match.winner_id === match.player_a;
   const winnerB = match.winner_id === match.player_b;
+  // Счёт, который сейчас набран в полях: показываем его сразу, не дожидаясь сохранения.
+  const rawA = scores.a.trim();
+  const rawB = scores.b.trim();
+  const filled =
+    rawA !== "" && rawB !== "" && Number.isFinite(Number(rawA)) && Number.isFinite(Number(rawB));
+  const typedA = Number(rawA);
+  const typedB = Number(rawB);
+  const decided = filled && typedA !== typedB;
+  const previewWinner = decided ? (typedA > typedB ? "a" : "b") : null;
+  const legal = decided && Math.max(typedA, typedB) === winSets && Math.min(typedA, typedB) < winSets;
+  const unsavedScore = decided && (match.score_a !== typedA || match.score_b !== typedB);
+  const winnerName = previewWinner === "a" ? match.player_a_name : match.player_b_name;
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
-      <span className={cn("min-w-0 flex-1 truncate text-right", winnerA ? "font-semibold text-navy-900" : "text-graphite-700")}>
+      <span className={cn("min-w-0 flex-1 truncate text-right", winnerA || previewWinner === "a" ? "font-semibold text-navy-900" : "text-graphite-700")}>
         {match.player_a_name}
       </span>
       {finished ? (
@@ -825,7 +944,7 @@ function MatchRow({
           {match.score_a ?? "—"}:{match.score_b ?? "—"}
         </span>
       ) : (
-        <span className="flex items-center gap-1">
+        <span className="order-last flex w-full items-center justify-center gap-1 sm:order-none sm:w-auto">
           <button
             type="button"
             onClick={() => onTechLoss("a")}
@@ -847,7 +966,11 @@ function MatchRow({
             max={winSets}
             value={scores.a}
             onChange={(event) => onChange("a", event.target.value)}
-            className="field-input !min-h-9 w-14 px-2 py-1 text-center"
+            className={cn(
+              "field-input !min-h-9 w-14 px-2 py-1 text-center",
+              legal && previewWinner === "a" && "border-emerald-600 font-semibold text-emerald-800",
+              decided && !legal && "border-accent-600 text-accent-700",
+            )}
             aria-label={`Счёт ${match.player_a_name}`}
           />
           <span className="text-graphite-400">:</span>
@@ -857,7 +980,11 @@ function MatchRow({
             max={winSets}
             value={scores.b}
             onChange={(event) => onChange("b", event.target.value)}
-            className="field-input !min-h-9 w-14 px-2 py-1 text-center"
+            className={cn(
+              "field-input !min-h-9 w-14 px-2 py-1 text-center",
+              legal && previewWinner === "b" && "border-emerald-600 font-semibold text-emerald-800",
+              decided && !legal && "border-accent-600 text-accent-700",
+            )}
             aria-label={`Счёт ${match.player_b_name}`}
           />
           <button
@@ -897,6 +1024,13 @@ function MatchRow({
         >
           <Check size={16} aria-hidden="true" />
         </button>
+      )}
+      {unsavedScore && (
+        <p className={cn("w-full text-[11px] leading-tight", legal ? "text-emerald-700" : "text-accent-700")}>
+          {legal
+            ? `Предпросмотр, ещё не сохранено: ${typedA}:${typedB} — победа ${winnerName}`
+            : `Счёт пока не финальный: встреча идёт до ${winSets} партий, у победителя — ${winSets}`}
+        </p>
       )}
     </div>
   );
