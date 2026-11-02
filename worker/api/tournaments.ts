@@ -155,6 +155,7 @@ async function tournamentView(env: Env, data: FullTournament) {
 
   const groupMatchesList = matches.filter((match) => match.stage === "group");
   const playoffMatches = matches.filter((match) => match.stage === "playoff");
+  const bracketPlan = tournament.format === "olympic" ? planBracket(participants, matches) : null;
 
   // Группы общие для всех лиг: лига влияет только на время турнира.
   const groupNumbers = [...new Set(groupMatchesList.map((match) => match.group_no).filter((value): value is number => value != null))].sort(
@@ -184,15 +185,18 @@ async function tournamentView(env: Env, data: FullTournament) {
             const list = playoffMatches.filter(
               (match) => (match.place_from ?? 1) === placeFrom && match.round === round,
             );
-            const placeTo = Math.max(...list.map((match) => match.place_to ?? placeFrom + 1));
-            return { place_from: placeFrom, place_to: placeTo, round, list };
+            // Размер круга берём из плана: по уже заведённым встречам четверть
+            // финала называлась бы «1/2 финала», пока пары не определены.
+            const meta = bracketPlan?.rounds.get(`${placeFrom}:${round}`);
+            const placeTo = meta?.place_to ?? Math.max(...list.map((match) => match.place_to ?? placeFrom + 1));
+            return { place_from: placeFrom, place_to: placeTo, round, list, planned: meta?.matches ?? list.length };
           })
           .sort((a, b) => a.place_from - b.place_from || a.round - b.round)
           .map((block) => ({
             round: block.round,
             place_from: block.place_from,
             place_to: block.place_to,
-            label: bracketRoundLabel(block.place_from, block.place_to, block.list.length),
+            label: bracketRoundLabel(block.place_from, block.place_to, block.planned),
             matches: block.list,
             best_of: tournament.best_of,
             sets_to_win: setsToWin(tournament.best_of),
@@ -222,9 +226,8 @@ async function tournamentView(env: Env, data: FullTournament) {
   // Сетка на вылет готова, когда заведены встречи за все места: пока какой-то
   // пары нет, значит, ещё не сыгран предыдущий круг.
   const bracketComplete = (() => {
-    if (tournament.format !== "olympic" || playoffMatches.length === 0) return false;
-    const plan = planBracket(participants, matches);
-    return plan.matches.every((match) => match.id !== undefined) && plan.places.size === participants.length;
+    if (!bracketPlan || playoffMatches.length === 0) return false;
+    return bracketPlan.matches.every((match) => match.id !== undefined) && bracketPlan.places.size === participants.length;
   })();
   const canPlayoff =
     tournament.format === "groups_playoff" && groupDone && playoffMatches.length === 0 && participants.length >= 2;

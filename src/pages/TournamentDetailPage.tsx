@@ -4,6 +4,7 @@ import { Seo } from "@/components/Seo";
 import { Breadcrumbs } from "@/components/site/PageHero";
 import { EmptyState, LoadingBlock } from "@/components/site/primitives";
 import { CrossTable } from "@/components/CrossTable";
+import { BracketView } from "@/components/BracketView";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { formatDate } from "@/lib/format";
@@ -169,6 +170,20 @@ export default function TournamentDetailPage() {
               </div>
             </div>
           ))}
+
+          {item.playoff.length > 0 && (
+            <div className="space-y-4 border-t border-navy-200 pt-10">
+              <div>
+                <h2 className="text-3xl">Сетка</h2>
+                <p className="mt-2 max-w-3xl text-sm text-graphite-600">
+                  {t.format === "olympic"
+                    ? "Проигравший не выбывает из турнира: он доигрывает в блоке мест ниже, поэтому разыгрываются все места — от первого до последнего."
+                    : "Победители проходят в следующий круг, проигравшие заканчивают борьбу за медали."}
+                </p>
+              </div>
+              <BracketView rounds={item.playoff} />
+            </div>
+          )}
 
           {item.playoff.map((round) => (
             <div key={`${round.place_from ?? 0}:${round.round}`} className="space-y-3 border-t border-navy-200 pt-10">

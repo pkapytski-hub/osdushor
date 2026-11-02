@@ -7,6 +7,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { AdminPageHeader, ConfirmDialog } from "./admin-ui";
 import { Field, FormAlert, Select, TextInput, Textarea } from "@/components/ui/Field";
 import { CrossTable } from "@/components/CrossTable";
+import { BracketView } from "@/components/BracketView";
 import {
   TOURNAMENT_FORMATS,
   type Athlete,
@@ -817,6 +818,19 @@ export default function TournamentEditorPage() {
               </Fragment>
               );
             })}
+
+          {data.playoff.length > 0 && (
+            <section className="border border-navy-100 bg-white p-5 sm:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-lg normal-case tracking-normal">Сетка</h2>
+                <p className="text-xs text-graphite-500">Счёт вводится в блоках ниже. Здесь видна сетка целиком, с учётом уже набранных, но не сохранённых партий.</p>
+              </div>
+              <BracketView
+                rounds={data.playoff.map((round) => ({ ...round, matches: round.matches.map(previewMatch) }))}
+                className="mt-4"
+              />
+            </section>
+          )}
 
           {data.playoff.map((round) => (
             <Fragment key={`${round.place_from ?? 0}:${round.round}`}>

@@ -559,6 +559,8 @@ export interface BracketPlan {
   remove: string[];
   /** Места, которые уже определились по результатам встреч. */
   places: Map<string, number>;
+  /** Сколько встреч будет в каждом круге блока — для подписи, пока круг заполняется. */
+  rounds: Map<string, { place_from: number; place_to: number; matches: number }>;
 }
 
 /** Место в сетке: участник (если известен) и признак «место занято». */
@@ -604,7 +606,7 @@ export function playoffRoundLabel(round: number, maxRound: number): string {
  */
 export function planBracket(participants: ParticipantInput[], matches: MatchInput[]): BracketPlan {
   const playoff = matches.filter((match) => match.stage === "playoff");
-  const plan: BracketPlan = { matches: [], remove: [], places: new Map() };
+  const plan: BracketPlan = { matches: [], remove: [], places: new Map(), rounds: new Map() };
   const count = participants.length;
   if (count < 2) {
     plan.remove = playoff.map((match) => match.id);
@@ -652,6 +654,7 @@ function planBlock(
   const placeTo = placeFrom + real.length - 1;
   const winners: BracketSlot[] = [];
   const losers: BracketSlot[] = [];
+  let planned = 0;
   for (let index = 0; index < slots.length; index += 2) {
     const first = slots[index];
     const second = slots[index + 1] ?? { player: null, real: false };
@@ -669,6 +672,7 @@ function planBlock(
     // Номер встречи внутри круга берётся по позиции пары, а не по счётчику:
     // тогда встречи, заведённые до появления розыгрыша всех мест, остаются на месте.
     const slotNo = index / 2 + 1;
+    planned += 1;
     const playerA = first.player;
     const playerB = second.player;
     const found = existing.get(bracketKey(placeFrom, round, slotNo));
@@ -693,6 +697,9 @@ function planBlock(
       real: true,
     });
   }
+  // Размер круга известен сразу, даже если встреча ещё ждёт соперника:
+  // по нему считается подпись («1/4 финала») и сколько всего встреч в блоке.
+  plan.rounds.set(`${placeFrom}:${round}`, { place_from: placeFrom, place_to: placeTo, matches: planned });
   planBlock(winners, placeFrom, round + 1, existing, plan, keep);
   planBlock(losers, placeFrom + winners.filter((slot) => slot.real).length, 1, existing, plan, keep);
 }
