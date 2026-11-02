@@ -180,6 +180,8 @@ async function tournamentView(env: Env, data: FullTournament) {
 
   // Олимпийская система доигрывает все места, поэтому встречи делятся на
   // блоки: основная сетка (1–2, 1–4 …) и утешительные (3–4, 5–8, 9–16 …).
+  // Номера встреч идут по книге школы: 1, 2, 3 … в порядке игры.
+  const numberById = new Map((bracketPlan?.matches ?? []).map((match) => [match.id ?? "", match.number]));
   const playoff =
     tournament.format === "olympic"
       ? [...new Set(playoffMatches.map((match) => `${match.place_from ?? 1}:${match.round}`))]
@@ -192,15 +194,24 @@ async function tournamentView(env: Env, data: FullTournament) {
             // финала называлась бы «1/2 финала», пока пары не определены.
             const meta = bracketPlan?.rounds.get(`${placeFrom}:${round}`);
             const placeTo = meta?.place_to ?? Math.max(...list.map((match) => match.place_to ?? placeFrom + 1));
-            return { place_from: placeFrom, place_to: placeTo, round, list, planned: meta?.matches ?? list.length };
+            return {
+              place_from: placeFrom,
+              place_to: placeTo,
+              round,
+              list,
+              planned: meta?.matches ?? list.length,
+              // Порядок игры: утешительные круги идут раньше следующего круга
+              // основной сетки, поэтому блоки сортируются не по местам.
+              order: meta?.order ?? Number.MAX_SAFE_INTEGER,
+            };
           })
-          .sort((a, b) => a.place_from - b.place_from || a.round - b.round)
+          .sort((a, b) => a.order - b.order)
           .map((block) => ({
             round: block.round,
             place_from: block.place_from,
             place_to: block.place_to,
             label: bracketRoundLabel(block.place_from, block.place_to, block.planned),
-            matches: block.list,
+            matches: block.list.map((match) => ({ ...match, number: numberById.get(match.id) ?? null })),
             best_of: tournament.best_of,
             sets_to_win: setsToWin(tournament.best_of),
           }))

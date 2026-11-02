@@ -547,6 +547,8 @@ export interface BracketPlanMatch {
   place_to: number;
   round: number;
   slot: number;
+  /** Порядковый номер встречи в турнире — как в книге школы: 1, 2, 3 … */
+  number: number;
   player_a: string;
   player_b: string;
   /** id встречи, если она уже заведена и не устарела. */
@@ -560,7 +562,19 @@ export interface BracketPlan {
   /** Места, которые уже определились по результатам встреч. */
   places: Map<string, number>;
   /** Сколько встреч будет в каждом круге блока — для подписи, пока круг заполняется. */
-  rounds: Map<string, { place_from: number; place_to: number; matches: number }>;
+  rounds: Map<string, BracketRoundPlan>;
+}
+
+/** Круг блока сетки: сколько в нём встреч и каким номером он начинается. */
+export interface BracketRoundPlan {
+  place_from: number;
+  place_to: number;
+  round: number;
+  matches: number;
+  /** Поколение круга: сколько кругов играется до определения его участников. */
+  generation: number;
+  /** Номер первой встречи круга (1, 9, 13 …) — по порядку игры, как в книге школы. */
+  order: number;
 }
 
 /** Место в сетке: участник (если известен) и признак «место занято». */
@@ -626,9 +640,66 @@ export function planBracket(participants: ParticipantInput[], matches: MatchInpu
     existing.set(bracketKey(match.place_from ?? 1, match.round, match.slot), match);
   }
   const keep = new Set<string>();
-  planBlock(slots, 1, 1, existing, plan, keep);
+  planBlock(slots, 1, 1, 0, existing, plan, keep);
+  numberBracket(plan);
   plan.remove = playoff.filter((match) => !keep.has(match.id)).map((match) => match.id);
   return plan;
+}
+
+/**
+ * Порядок кругов для турнира на 16 человек — как в книге школы. Встречи
+ * нумеруются по времени игры: после 1/8 идут четвертьфиналы блока 9–16, затем
+ * основные 1/4, потом все полуфиналы (9–12, 13–16, 5–8, основные), затем
+ * финалы за места от 15–16 к 5–6, встреча за 3–4 и финал.
+ */
+const BOOK_ORDER: Record<number, Array<[number, number]>> = {
+  16: [
+    [1, 1],
+    [9, 1],
+    [1, 2],
+    [9, 2],
+    [13, 1],
+    [5, 1],
+    [1, 3],
+    [15, 1],
+    [13, 2],
+    [11, 1],
+    [9, 3],
+    [7, 1],
+    [5, 2],
+    [3, 1],
+    [1, 4],
+  ],
+};
+
+/**
+ * Расставляет встречам номера в порядке игры. Круг получает номер своей первой
+ * встречи, поэтому пары нумеруются 1, 2, 3 … без разрывов, как в книге школы.
+ */
+function numberBracket(plan: BracketPlan): void {
+  const rounds = [...plan.rounds.values()];
+  const size = rounds.reduce((max, round) => Math.max(max, round.place_to), 0);
+  const book = BOOK_ORDER[size];
+  const bookIndex = (round: BracketRoundPlan): number => {
+    const found = book
+      ? book.findIndex(([place, no]) => place === round.place_from && no === round.round)
+      : -1;
+    return found < 0 ? Number.MAX_SAFE_INTEGER : found;
+  };
+  const ordered = book
+    ? [...rounds].sort((a, b) => bookIndex(a) - bookIndex(b))
+    : [...rounds].sort(
+        (a, b) => a.generation - b.generation || b.place_from - a.place_from || a.round - b.round,
+      );
+  let next = 1;
+  for (const round of ordered) {
+    round.order = next;
+    next += round.matches;
+  }
+  for (const match of plan.matches) {
+    const round = plan.rounds.get(`${match.place_from}:${match.round}`);
+    match.number = (round?.order ?? 1) + match.slot - 1;
+  }
 }
 
 /**
@@ -641,6 +712,7 @@ function planBlock(
   slots: BracketSlot[],
   placeFrom: number,
   round: number,
+  base: number,
   existing: Map<string, MatchInput>,
   plan: BracketPlan,
   keep: Set<string>,
@@ -652,6 +724,9 @@ function planBlock(
     return;
   }
   const placeTo = placeFrom + real.length - 1;
+  // Поколение круга: сколько кругов сыграно до того, как определились его
+  // участники. По нему круг занимает своё место в общем порядке встреч.
+  const generation = base + round;
   const winners: BracketSlot[] = [];
   const losers: BracketSlot[] = [];
   let planned = 0;
@@ -685,6 +760,7 @@ function planBlock(
         place_to: placeTo,
         round,
         slot: slotNo,
+        number: 0,
         player_a: playerA,
         player_b: playerB,
         id: valid?.id,
@@ -699,9 +775,18 @@ function planBlock(
   }
   // Размер круга известен сразу, даже если встреча ещё ждёт соперника:
   // по нему считается подпись («1/4 финала») и сколько всего встреч в блоке.
-  plan.rounds.set(`${placeFrom}:${round}`, { place_from: placeFrom, place_to: placeTo, matches: planned });
-  planBlock(winners, placeFrom, round + 1, existing, plan, keep);
-  planBlock(losers, placeFrom + winners.filter((slot) => slot.real).length, 1, existing, plan, keep);
+  plan.rounds.set(`${placeFrom}:${round}`, {
+    place_from: placeFrom,
+    place_to: placeTo,
+    round,
+    matches: planned,
+    generation,
+    order: 0,
+  });
+  planBlock(winners, placeFrom, round + 1, base, existing, plan, keep);
+  // Проигравшие входят в блок мест на поколение позже: их круг идёт после
+  // круга, в котором они проиграли.
+  planBlock(losers, placeFrom + winners.filter((slot) => slot.real).length, 1, generation, existing, plan, keep);
 }
 
 /**

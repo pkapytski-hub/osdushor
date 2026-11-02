@@ -23,7 +23,8 @@ function MatchesTable({ matches }: { matches: TournamentMatch[] }) {
         const winnerA = match.winner_id === match.player_a;
         const winnerB = match.winner_id === match.player_b;
         return (
-          <div key={match.id} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5 text-sm">
+          <div key={match.id} className="grid grid-cols-[2rem_1fr_auto_1fr] items-center gap-3 px-4 py-2.5 text-sm">
+            <span className="text-[11px] tabular-nums text-graphite-400">{match.number ?? ""}</span>
             <span className={cn("truncate text-right", winnerA ? "font-semibold text-navy-900" : "text-graphite-600")}>
               {match.player_a_name}
             </span>

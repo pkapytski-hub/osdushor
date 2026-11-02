@@ -315,6 +315,8 @@ export interface TournamentMatch {
   /** Блок сетки олимпийской системы: разыгрываемые им места. */
   place_from?: number | null;
   place_to?: number | null;
+  /** Номер встречи в порядке игры (олимпийская система): 1, 2, 3 … */
+  number?: number | null;
   player_a: string;
   player_b: string;
   player_a_name: string;

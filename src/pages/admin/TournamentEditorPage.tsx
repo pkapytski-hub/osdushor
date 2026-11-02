@@ -842,7 +842,15 @@ export default function TournamentEditorPage() {
           {data.playoff.map((round) => (
             <Fragment key={`${round.place_from ?? 0}:${round.round}`}>
               <section className="border border-navy-100 bg-white p-5 sm:p-6">
-                <h3 className="text-lg normal-case tracking-normal">{round.label}</h3>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-lg normal-case tracking-normal">{round.label}</h3>
+                  {round.matches.every((match) => match.number) && (
+                    <span className="text-xs text-graphite-500">
+                      встречи {Math.min(...round.matches.map((match) => Number(match.number)))}–
+                      {Math.max(...round.matches.map((match) => Number(match.number)))}
+                    </span>
+                  )}
+                </div>
                 <div className="mt-3 divide-y divide-navy-100 border border-navy-100">
                   {round.matches.map((match) => (
                     <MatchRow
