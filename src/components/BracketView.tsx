@@ -28,20 +28,50 @@ function blockTitle(block: TournamentPlayoffRound[]): string {
   return `За места ${from}–${to}`;
 }
 
-function MatchCard({ match, places }: { match: TournamentMatch; places?: Map<string, number> }) {
+/**
+ * Встреча, после которой место окончательно. Место подписывают только там —
+ * как в книге, где «1 место» и «2 место» стоят у финала, а не в первом круге.
+ */
+function lastMatchByAthlete(rounds: TournamentPlayoffRound[]): Map<string, string> {
+  const ordered = rounds
+    .flatMap((round) => round.matches)
+    .map((match, index) => ({ match, index }))
+    .sort((a, b) => (a.match.number ?? a.index) - (b.match.number ?? b.index) || a.index - b.index);
+  const result = new Map<string, string>();
+  for (const { match } of ordered) {
+    if (match.score_a === null || match.score_b === null) continue;
+    result.set(match.player_a, match.id);
+    result.set(match.player_b, match.id);
+  }
+  return result;
+}
+
+function MatchCard({
+  match,
+  places,
+  lastMatch,
+}: {
+  match: TournamentMatch;
+  places?: Map<string, number>;
+  lastMatch?: Map<string, string>;
+}) {
   const played = match.score_a !== null && match.score_b !== null;
+  const placeFor = (id: string): number | null =>
+    lastMatch?.get(id) === match.id ? places?.get(id) ?? null : null;
   const rows = [
     {
       id: match.player_a,
       name: match.player_a_name,
       score: match.score_a,
       winner: match.winner_id !== null && match.winner_id === match.player_a,
+      place: placeFor(match.player_a),
     },
     {
       id: match.player_b,
       name: match.player_b_name,
       score: match.score_b,
       winner: match.winner_id !== null && match.winner_id === match.player_b,
+      place: placeFor(match.player_b),
     },
   ];
   return (
@@ -61,12 +91,12 @@ function MatchCard({ match, places }: { match: TournamentMatch; places?: Map<str
         >
           <span className={cn("h-2.5 w-0.5 shrink-0", row.winner ? "bg-accent-600" : "bg-transparent")} aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{row.name || "—"}</span>
-          {places?.get(row.id) !== undefined && (
+          {row.place !== null && (
             <span
               className="shrink-0 border border-accent-600/40 bg-accent-50 px-1 font-display text-[9px] leading-[1.5] text-accent-700"
-              title={`Занятое место: ${places.get(row.id)}`}
+              title={`Занятое место: ${row.place}`}
             >
-              {places.get(row.id)}-е
+              {row.place} место
             </span>
           )}
           <span className={cn("w-4 shrink-0 text-right font-display tabular-nums", row.winner ? "text-navy-900" : "text-graphite-500")}>
@@ -78,7 +108,15 @@ function MatchCard({ match, places }: { match: TournamentMatch; places?: Map<str
   );
 }
 
-function BlockBracket({ block, places }: { block: TournamentPlayoffRound[]; places?: Map<string, number> }) {
+function BlockBracket({
+  block,
+  places,
+  lastMatch,
+}: {
+  block: TournamentPlayoffRound[];
+  places?: Map<string, number>;
+  lastMatch?: Map<string, string>;
+}) {
   const firstRoundMatches = block[0]?.matches.length ?? 0;
   const rowsCount = Math.max(firstRoundMatches, 1) * 4;
   const allMatches = block.flatMap((round) => round.matches);
@@ -130,7 +168,7 @@ function BlockBracket({ block, places }: { block: TournamentPlayoffRound[]; plac
                   style={{ gridColumn: roundIndex + 1, gridRow: `${start + 1} / span 3` }}
                   className="min-h-0"
                 >
-                  <MatchCard match={match} places={places} />
+                  <MatchCard match={match} places={places} lastMatch={lastMatch} />
                 </div>
               );
             }),
@@ -147,16 +185,22 @@ export function BracketView({
   className,
 }: {
   rounds: TournamentPlayoffRound[];
-  /** Занятые места по id спортсмена: показываются рядом с фамилией, как только место определилось. */
+  /** Занятые места по id спортсмена: подписываются во встрече, где место решилось. */
   places?: Map<string, number>;
   className?: string;
 }) {
   const blocks = groupBlocks(rounds);
   if (blocks.length === 0) return null;
+  const lastMatch = lastMatchByAthlete(rounds);
   return (
     <div className={cn("space-y-5", className)}>
       {blocks.map((block) => (
-        <BlockBracket key={block[0].place_from ?? block[0].round} block={block} places={places} />
+        <BlockBracket
+          key={block[0].place_from ?? block[0].round}
+          block={block}
+          places={places}
+          lastMatch={lastMatch}
+        />
       ))}
     </div>
   );

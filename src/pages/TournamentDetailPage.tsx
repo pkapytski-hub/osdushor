@@ -215,7 +215,7 @@ export default function TournamentDetailPage() {
                       className="flex items-baseline justify-between gap-3 border-b border-navy-100 py-1.5 text-sm"
                     >
                       <span className="truncate text-navy-900">{participant.full_name}</span>
-                      <span className="font-display text-navy-900">{participant.place}-е</span>
+                      <span className="font-display text-navy-900">{participant.place} место</span>
                     </div>
                   ))}
               </div>
