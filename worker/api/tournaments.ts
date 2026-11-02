@@ -425,7 +425,11 @@ export async function handleTournamentsAdmin(
     if (method === "GET") {
       const data = await loadTournament(env, id);
       if (!data) return fail(404, "not_found", "Турнир не найден.");
-      return ok({ item: await tournamentView(env, data) });
+      // Сетка могла быть заведена до появления розыгрыша всех мест: при
+      // открытии турнира дополняем её недостающими встречами за места.
+      await materializeBracket(env, id);
+      const filled = (await loadTournament(env, id)) ?? data;
+      return ok({ item: await tournamentView(env, filled) });
     }
     if (method === "PUT" || method === "PATCH") return updateTournament(env, user, id, request);
     if (method === "DELETE") return deleteTournament(env, user, id);
