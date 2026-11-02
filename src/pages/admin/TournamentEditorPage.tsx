@@ -60,15 +60,6 @@ interface PendingConfirm {
   run: () => Promise<void>;
 }
 
-function roundLabel(round: number, maxRound: number): string {
-  const left = maxRound - round;
-  if (left === 0) return "Финал";
-  if (left === 1) return "1/2 финала";
-  if (left === 2) return "1/4 финала";
-  if (left === 3) return "1/8 финала";
-  return `${round}-й круг`;
-}
-
 function StandingsTable({ rows }: { rows: TournamentStanding[] }) {
   return (
     <div className="overflow-x-auto border border-navy-100">
@@ -388,7 +379,6 @@ export default function TournamentEditorPage() {
   const allMatches = data
     ? [...data.groups.flatMap((group) => group.matches), ...data.playoff.flatMap((round) => round.matches)]
     : [];
-  const maxRound = data?.playoff.length ? Math.max(...data.playoff.map((round) => round.round)) : 0;
   const leagueOfAthlete = new Map<string, number | null>();
   for (const participant of data?.participants ?? []) {
     leagueOfAthlete.set(participant.athlete_id, participant.league);
@@ -829,9 +819,9 @@ export default function TournamentEditorPage() {
             })}
 
           {data.playoff.map((round) => (
-            <Fragment key={round.round}>
+            <Fragment key={`${round.place_from ?? 0}:${round.round}`}>
               <section className="border border-navy-100 bg-white p-5 sm:p-6">
-                <h3 className="text-lg normal-case tracking-normal">{roundLabel(round.round, maxRound)}</h3>
+                <h3 className="text-lg normal-case tracking-normal">{round.label}</h3>
                 <div className="mt-3 divide-y divide-navy-100 border border-navy-100">
                   {round.matches.map((match) => (
                     <MatchRow

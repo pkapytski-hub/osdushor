@@ -110,6 +110,9 @@ export interface MatchInput {
   group_no: number | null;
   round: number;
   slot: number;
+  /** Блок сетки олимпийской системы: с какого и по какое место он разыгрывает. */
+  place_from?: number | null;
+  place_to?: number | null;
   player_a: string;
   player_b: string;
   score_a: number | null;
@@ -538,6 +541,10 @@ export interface FinalizePlan {
 }
 
 export interface BracketPlanMatch {
+  /** Верхнее место блока: в олимпийской системе доигрываются все места. */
+  place_from: number;
+  /** Нижнее место блока — для подписи «1/2 финала (9–16)», «5–6» и подобных. */
+  place_to: number;
   round: number;
   slot: number;
   player_a: string;
@@ -550,6 +557,40 @@ export interface BracketPlan {
   matches: BracketPlanMatch[];
   /** Встречи, которые больше не соответствуют сетке: их нужно удалить. */
   remove: string[];
+  /** Места, которые уже определились по результатам встреч. */
+  places: Map<string, number>;
+}
+
+/** Место в сетке: участник (если известен) и признак «место занято». */
+interface BracketSlot {
+  player: string | null;
+  /** У свободного прохода соперника нет вовсе — это не «ещё не сыграно». */
+  real: boolean;
+}
+
+function bracketKey(placeFrom: number, round: number, slot: number): string {
+  return `${placeFrom}:${round}:${slot}`;
+}
+
+/** Подпись круга сетки: «1/8 финала», «1/2 финала (9–16)», «5–6». */
+export function bracketRoundLabel(placeFrom: number, placeTo: number, matchCount: number): string {
+  if (matchCount <= 1) {
+    if (placeFrom === 1) return "Финал";
+    return `${placeFrom}–${placeTo}`;
+  }
+  const fraction = matchCount <= 2 ? "1/2" : matchCount <= 4 ? "1/4" : matchCount <= 8 ? "1/8" : "1/16";
+  const label = `${fraction} финала`;
+  return placeFrom === 1 ? label : `${label} (${placeFrom}–${placeTo})`;
+}
+
+/** Подпись круга обычного плей-офф, где за места играют только призёры. */
+export function playoffRoundLabel(round: number, maxRound: number): string {
+  const left = maxRound - round;
+  if (left === 0) return "Финал";
+  if (left === 1) return "1/2 финала";
+  if (left === 2) return "1/4 финала";
+  if (left === 3) return "1/8 финала";
+  return `${round}-й круг`;
 }
 
 /**
@@ -563,49 +604,97 @@ export interface BracketPlan {
  */
 export function planBracket(participants: ParticipantInput[], matches: MatchInput[]): BracketPlan {
   const playoff = matches.filter((match) => match.stage === "playoff");
+  const plan: BracketPlan = { matches: [], remove: [], places: new Map() };
   const count = participants.length;
-  if (count < 2) return { matches: [], remove: playoff.map((match) => match.id) };
-  const order = bracketOrder(bracketSize(count));
-  // Лучший по рейтингу получает первый номер посева.
+  if (count < 2) {
+    plan.remove = playoff.map((match) => match.id);
+    return plan;
+  }
+  // Жеребьёвка уже расставила сильнейших по номерам посева: 1 — сильнейший.
   const bySeed = new Map<number, string>();
   [...participants]
     .sort((a, b) => (a.seed || 999) - (b.seed || 999))
     .forEach((participant, index) => bySeed.set(index + 1, participant.athlete_id));
-  const existing = new Map(playoff.map((match) => [`${match.round}:${match.slot}`, match]));
-  const keep = new Set<string>();
-  const plan: BracketPlanMatch[] = [];
-  // positions[i] — участник на этом месте сетки; undefined, пока победитель
-  // предыдущей встречи неизвестен.
-  let positions: (string | undefined)[] = order.map((seed) => bySeed.get(seed));
-  let round = 1;
-  while (positions.length > 1) {
-    const next: (string | undefined)[] = [];
-    for (let index = 0; index < positions.length; index += 2) {
-      const first = positions[index];
-      const second = positions[index + 1];
-      const slot = index / 2 + 1;
-      if (first && second) {
-        const found = existing.get(`${round}:${slot}`);
-        const valid = found && found.player_a === first && found.player_b === second ? found : null;
-        if (valid) keep.add(valid.id);
-        plan.push({ round, slot, player_a: first, player_b: second, id: valid?.id });
-        next.push(valid ? matchWinner(valid) ?? undefined : undefined);
-      } else {
-        // Первый круг без соперника: участник сразу проходит дальше. В более
-        // поздних кругах пустое место означает, что встреча ещё не сыграна, и
-        // поднимать кого-то наверх нельзя — иначе финал собрался бы раньше
-        // полуфиналов.
-        if (round > 1) {
-          next.push(undefined);
-          continue;
-        }
-        next.push(first ?? second);
-      }
-    }
-    positions = next;
-    round += 1;
+  const slots: BracketSlot[] = bracketOrder(bracketSize(count)).map((seed) => {
+    const player = bySeed.get(seed) ?? null;
+    return { player, real: player !== null };
+  });
+  const existing = new Map<string, MatchInput>();
+  for (const match of playoff) {
+    existing.set(bracketKey(match.place_from ?? 1, match.round, match.slot), match);
   }
-  return { matches: plan, remove: playoff.filter((match) => !keep.has(match.id)).map((match) => match.id) };
+  const keep = new Set<string>();
+  planBlock(slots, 1, 1, existing, plan, keep);
+  plan.remove = playoff.filter((match) => !keep.has(match.id)).map((match) => match.id);
+  return plan;
+}
+
+/**
+ * Один блок сетки. Блок — это мини-турнир на вылет за свой диапазон мест:
+ * победители остаются в блоке и играют за места повыше, проигравшие уходят
+ * в следующий блок и разыгрывают места пониже. Поэтому в олимпийской системе
+ * каждый участник доигрывает до своего места, а не делит его с другими.
+ */
+function planBlock(
+  slots: BracketSlot[],
+  placeFrom: number,
+  round: number,
+  existing: Map<string, MatchInput>,
+  plan: BracketPlan,
+  keep: Set<string>,
+): void {
+  const real = slots.filter((slot) => slot.real);
+  if (real.length <= 1) {
+    const only = real[0];
+    if (only?.player) plan.places.set(only.player, placeFrom);
+    return;
+  }
+  const placeTo = placeFrom + real.length - 1;
+  const winners: BracketSlot[] = [];
+  const losers: BracketSlot[] = [];
+  for (let index = 0; index < slots.length; index += 2) {
+    const first = slots[index];
+    const second = slots[index + 1] ?? { player: null, real: false };
+    if (!first.real && !second.real) {
+      winners.push({ player: null, real: false });
+      losers.push({ player: null, real: false });
+      continue;
+    }
+    if (!first.real || !second.real) {
+      // Свободный проход: участник без соперника сразу идёт дальше.
+      winners.push({ player: first.player ?? second.player, real: true });
+      losers.push({ player: null, real: false });
+      continue;
+    }
+    // Номер встречи внутри круга берётся по позиции пары, а не по счётчику:
+    // тогда встречи, заведённые до появления розыгрыша всех мест, остаются на месте.
+    const slotNo = index / 2 + 1;
+    const playerA = first.player;
+    const playerB = second.player;
+    const found = existing.get(bracketKey(placeFrom, round, slotNo));
+    const valid = found && found.player_a === playerA && found.player_b === playerB ? found : null;
+    if (valid) keep.add(valid.id);
+    // Встреча появляется только тогда, когда известны оба участника.
+    if (playerA && playerB) {
+      plan.matches.push({
+        place_from: placeFrom,
+        place_to: placeTo,
+        round,
+        slot: slotNo,
+        player_a: playerA,
+        player_b: playerB,
+        id: valid?.id,
+      });
+    }
+    const winner = valid ? matchWinner(valid) : null;
+    winners.push({ player: winner ?? null, real: true });
+    losers.push({
+      player: winner && playerA && playerB ? (winner === playerA ? playerB : playerA) : null,
+      real: true,
+    });
+  }
+  planBlock(winners, placeFrom, round + 1, existing, plan, keep);
+  planBlock(losers, placeFrom + winners.filter((slot) => slot.real).length, 1, existing, plan, keep);
 }
 
 /**
@@ -666,6 +755,18 @@ export function computePlaces(
   if (format === "round_robin") {
     const table = standings(participants, matches);
     table.forEach((row, index) => result.set(row.athlete_id, index + 1));
+    return result;
+  }
+  // Олимпийская система разыгрывает все места, поэтому их даёт сама сетка.
+  if (format === "olympic") {
+    const plan = planBracket(participants, matches);
+    for (const [athleteId, place] of plan.places) result.set(athleteId, place);
+    const rest = standings(participants, matches).filter((row) => !result.has(row.athlete_id));
+    let next = Math.max(0, ...result.values()) + 1;
+    for (const row of rest) {
+      result.set(row.athlete_id, next);
+      next += 1;
+    }
     return result;
   }
   const playoff = matches.filter((match) => match.stage === "playoff" && hasScore(match));

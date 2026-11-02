@@ -312,6 +312,9 @@ export interface TournamentMatch {
   group_no: number | null;
   round: number;
   slot: number;
+  /** Блок сетки олимпийской системы: разыгрываемые им места. */
+  place_from?: number | null;
+  place_to?: number | null;
   player_a: string;
   player_b: string;
   player_a_name: string;
@@ -351,6 +354,11 @@ export interface TournamentGroup {
 
 export interface TournamentPlayoffRound {
   round: number;
+  /** Блок сетки: с какого по какое место (null для групп с плей-офф). */
+  place_from: number | null;
+  place_to: number | null;
+  /** Подпись круга: «1/2 финала», «1/2 финала (9–16)», «5–6». */
+  label: string;
   matches: TournamentMatch[];
   best_of: number;
   sets_to_win: number;

@@ -33,6 +33,15 @@ export async function ensureSchema(env: Env): Promise<void> {
         }
       }
       // Длину встречи (3, 5 или 7 партий) стали выбирать в настройках турнира.
+      // Блок сетки (1–2, 3–4, 5–8, 9–16 …) появился вместе с розыгрышем всех
+      // мест в олимпийской системе.
+      for (const column of ["place_from", "place_to"]) {
+        try {
+          await env.DB.prepare(`ALTER TABLE tournament_matches ADD COLUMN ${column} INTEGER`).run();
+        } catch {
+          /* колонка уже есть */
+        }
+      }
       try {
         await env.DB.prepare("ALTER TABLE tournaments ADD COLUMN best_of INTEGER NOT NULL DEFAULT 5").run();
       } catch {

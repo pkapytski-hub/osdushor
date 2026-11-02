@@ -10,15 +10,6 @@ import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TournamentMatch, TournamentStanding } from "@/lib/types";
 
-function roundLabel(round: number, maxRound: number): string {
-  const left = maxRound - round;
-  if (left === 0) return "Финал";
-  if (left === 1) return "1/2 финала";
-  if (left === 2) return "1/4 финала";
-  if (left === 3) return "1/8 финала";
-  return `${round}-й круг`;
-}
-
 function scoreText(match: TournamentMatch): string {
   if (match.score_a === null || match.score_b === null) return "—";
   return `${match.score_a}:${match.score_b}`;
@@ -96,7 +87,6 @@ export default function TournamentDetailPage() {
 
   const item = tournament.data.item;
   const t = item.tournament;
-  const maxRound = item.playoff.length ? Math.max(...item.playoff.map((round) => round.round)) : 0;
 
   return (
     <>
@@ -181,8 +171,8 @@ export default function TournamentDetailPage() {
           ))}
 
           {item.playoff.map((round) => (
-            <div key={round.round} className="space-y-3 border-t border-navy-200 pt-10">
-              <h2 className="text-3xl">{roundLabel(round.round, maxRound)}</h2>
+            <div key={`${round.place_from ?? 0}:${round.round}`} className="space-y-3 border-t border-navy-200 pt-10">
+              <h2 className="text-3xl">{round.label}</h2>
               <MatchesTable matches={round.matches} />
             </div>
           ))}

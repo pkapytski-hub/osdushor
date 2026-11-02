@@ -2,6 +2,7 @@ import { ApiProblem, bool, fail, int, ok, readJson, str, uuid } from "../lib/htt
 import { audit, type SessionUser } from "../lib/auth";
 import {
   allGroupMatchesPlayed,
+  bracketRoundLabel,
   computePlaces,
   drawGroups,
   GROUP_MAX_SIZE,
@@ -13,6 +14,7 @@ import {
   nextPlayoffRound,
   planBracket,
   planFinalize,
+  playoffRoundLabel,
   qualifiers,
   seededPairs,
   setsToWin,
@@ -86,6 +88,8 @@ function mapMatch(row: Record<string, unknown>): MatchInput & {
     group_no: row.group_no == null ? null : Number(row.group_no),
     round: Number(row.round ?? 1),
     slot: Number(row.slot ?? 0),
+    place_from: row.place_from == null ? null : Number(row.place_from),
+    place_to: row.place_to == null ? null : Number(row.place_to),
     player_a: String(row.player_a),
     player_b: String(row.player_b),
     score_a: row.score_a == null ? null : Number(row.score_a),
@@ -118,7 +122,7 @@ async function loadTournament(env: Env, id: string): Promise<FullTournament | nu
        JOIN athletes a ON a.id = m.player_a
        JOIN athletes b ON b.id = m.player_b
        WHERE m.tournament_id = ?
-       ORDER BY CASE m.stage WHEN 'group' THEN 0 ELSE 1 END, m.group_no, m.round, m.slot`,
+       ORDER BY CASE m.stage WHEN 'group' THEN 0 ELSE 1 END, m.group_no, m.place_from, m.round, m.slot`,
     )
       .bind(id)
       .all<Record<string, unknown>>(),
@@ -170,14 +174,43 @@ async function tournamentView(env: Env, data: FullTournament) {
     };
   });
 
-  const playoff = [...new Set(playoffMatches.map((match) => match.round))]
-    .sort((a, b) => a - b)
-    .map((round) => ({
-      round,
-      matches: playoffMatches.filter((match) => match.round === round),
-      best_of: tournament.best_of,
-      sets_to_win: setsToWin(tournament.best_of),
-    }));
+  // Олимпийская система доигрывает все места, поэтому встречи делятся на
+  // блоки: основная сетка (1–2, 1–4 …) и утешительные (3–4, 5–8, 9–16 …).
+  const playoff =
+    tournament.format === "olympic"
+      ? [...new Set(playoffMatches.map((match) => `${match.place_from ?? 1}:${match.round}`))]
+          .map((key) => {
+            const [placeFrom, round] = key.split(":").map(Number);
+            const list = playoffMatches.filter(
+              (match) => (match.place_from ?? 1) === placeFrom && match.round === round,
+            );
+            const placeTo = Math.max(...list.map((match) => match.place_to ?? placeFrom + 1));
+            return { place_from: placeFrom, place_to: placeTo, round, list };
+          })
+          .sort((a, b) => a.place_from - b.place_from || a.round - b.round)
+          .map((block) => ({
+            round: block.round,
+            place_from: block.place_from,
+            place_to: block.place_to,
+            label: bracketRoundLabel(block.place_from, block.place_to, block.list.length),
+            matches: block.list,
+            best_of: tournament.best_of,
+            sets_to_win: setsToWin(tournament.best_of),
+          }))
+      : (() => {
+          const maxRound = playoffMatches.length ? Math.max(...playoffMatches.map((match) => match.round)) : 0;
+          return [...new Set(playoffMatches.map((match) => match.round))]
+            .sort((a, b) => a - b)
+            .map((round) => ({
+              round,
+              place_from: null,
+              place_to: null,
+              label: playoffRoundLabel(round, maxRound),
+              matches: playoffMatches.filter((match) => match.round === round),
+              best_of: tournament.best_of,
+              sets_to_win: setsToWin(tournament.best_of),
+            }));
+        })();
 
   const groupDone = groupMatchesList.length > 0 && allGroupMatchesPlayed(groupMatchesList);
   const playoffsComplete = (() => {
@@ -186,13 +219,21 @@ async function tournamentView(env: Env, data: FullTournament) {
     const final = playoffMatches.filter((match) => match.round === maxRound);
     return final.length === 1 && final[0].score_a !== null && final[0].score_b !== null;
   })();
+  // Сетка на вылет готова, когда заведены встречи за все места: пока какой-то
+  // пары нет, значит, ещё не сыгран предыдущий круг.
+  const bracketComplete = (() => {
+    if (tournament.format !== "olympic" || playoffMatches.length === 0) return false;
+    const plan = planBracket(participants, matches);
+    return plan.matches.every((match) => match.id !== undefined) && plan.places.size === participants.length;
+  })();
   const canPlayoff =
     tournament.format === "groups_playoff" && groupDone && playoffMatches.length === 0 && participants.length >= 2;
   const canFinalize =
     participants.length >= 2 &&
     matches.length > 0 &&
     matches.every((match) => match.score_a !== null && match.score_b !== null) &&
-    (tournament.format === "round_robin" || playoffsComplete);
+    (tournament.format === "round_robin" ||
+      (tournament.format === "olympic" ? bracketComplete : playoffsComplete));
   const plan =
     canFinalize && tournament.is_finished === 0
       ? planFinalize(participants, matches, tournament.coefficient, tournament.format)
@@ -262,17 +303,30 @@ async function materializeBracket(env: Env, id: string): Promise<void> {
   const data = await loadTournament(env, id);
   if (!data || data.tournament.format !== "olympic") return;
   const plan = planBracket(data.participants, data.matches);
+  const stored = new Map(data.matches.map((match) => [match.id, match]));
   const statements = [
     ...plan.remove.map((matchId) =>
       env.DB.prepare("DELETE FROM tournament_matches WHERE id = ? AND tournament_id = ?").bind(matchId, id),
     ),
     ...plan.matches
+      .filter(
+        (match) =>
+          match.id &&
+          ((stored.get(match.id)?.place_from ?? null) !== match.place_from ||
+            (stored.get(match.id)?.place_to ?? null) !== match.place_to),
+      )
+      .map((match) =>
+        env.DB.prepare(
+          "UPDATE tournament_matches SET place_from = ?, place_to = ? WHERE id = ? AND tournament_id = ?",
+        ).bind(match.place_from, match.place_to, match.id, id),
+      ),
+    ...plan.matches
       .filter((match) => !match.id)
       .map((match) =>
         env.DB.prepare(
-          `INSERT INTO tournament_matches (id, tournament_id, stage, group_no, round, slot, player_a, player_b)
-           VALUES (?, ?, 'playoff', NULL, ?, ?, ?, ?)`,
-        ).bind(uuid(), id, match.round, match.slot, match.player_a, match.player_b),
+          `INSERT INTO tournament_matches (id, tournament_id, stage, group_no, place_from, place_to, round, slot, player_a, player_b)
+           VALUES (?, ?, 'playoff', NULL, ?, ?, ?, ?, ?, ?)`,
+        ).bind(uuid(), id, match.place_from, match.place_to, match.round, match.slot, match.player_a, match.player_b),
       ),
   ];
   if (statements.length > 0) await env.DB.batch(statements);
@@ -732,10 +786,17 @@ async function finalizeTournament(env: Env, user: SessionUser, id: string): Prom
           : "Сначала сформируйте сетку плей-офф.",
       );
     }
-    const maxRound = Math.max(...playoff.map((match) => match.round));
-    const final = playoff.filter((match) => match.round === maxRound);
-    if (final.length !== 1 || final[0].score_a === null || final[0].score_b === null) {
-      return fail(400, "no_final", "Финал ещё не сыгран.");
+    if (tournament.format === "olympic") {
+      const plan = planBracket(participants, matches);
+      if (plan.matches.some((match) => !match.id) || plan.places.size !== participants.length) {
+        return fail(400, "no_final", "Сетка ещё не доиграна: остались несыгранные встречи за места.");
+      }
+    } else {
+      const maxRound = Math.max(...playoff.map((match) => match.round));
+      const final = playoff.filter((match) => match.round === maxRound);
+      if (final.length !== 1 || final[0].score_a === null || final[0].score_b === null) {
+        return fail(400, "no_final", "Финал ещё не сыгран.");
+      }
     }
   }
   await refreshRatingSnapshot(env, id);

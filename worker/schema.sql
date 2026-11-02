@@ -276,6 +276,10 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   group_no INTEGER,
   round INTEGER NOT NULL DEFAULT 1,
   slot INTEGER NOT NULL DEFAULT 0,
+  -- Олимпийская система доигрывает все места: у встречи есть блок сетки —
+  -- с какого по какое место он разыгрывает (1–2, 3–4, 5–8, 9–16 …).
+  place_from INTEGER,
+  place_to INTEGER,
   player_a TEXT NOT NULL REFERENCES athletes(id),
   player_b TEXT NOT NULL REFERENCES athletes(id),
   score_a INTEGER,
