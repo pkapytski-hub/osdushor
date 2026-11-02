@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarDays, Trophy, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronDown, Trophy, Users } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { Breadcrumbs } from "@/components/site/PageHero";
 import { EmptyState, LoadingBlock } from "@/components/site/primitives";
@@ -9,6 +9,76 @@ import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { TournamentMatch } from "@/lib/types";
+
+function scoreText(match: TournamentMatch): string {
+  if (match.score_a === null || match.score_b === null) return "—";
+  // Техническая победа — как в протоколе: «w» у победителя и 0 у соперника.
+  if (match.tech_loss_a) return "0:w";
+  if (match.tech_loss_b) return "w:0";
+  return `${match.score_a}:${match.score_b}`;
+}
+
+function MatchesTable({ matches }: { matches: TournamentMatch[] }) {
+  return (
+    <div className="divide-y divide-navy-100 border border-navy-100 bg-white">
+      {matches.map((match) => {
+        const winnerA = match.winner_id === match.player_a;
+        const winnerB = match.winner_id === match.player_b;
+        return (
+          <div key={match.id} className="grid grid-cols-[2rem_1fr_auto_1fr] items-center gap-3 px-4 py-2.5 text-sm">
+            <span className="text-[11px] tabular-nums text-graphite-400">{match.number ?? ""}</span>
+            <span className={cn("truncate text-right", winnerA ? "font-semibold text-navy-900" : "text-graphite-600")}>
+              {match.player_a_name}
+            </span>
+            <span className={cn("min-w-14 text-center font-display text-base", winnerA || winnerB ? "text-navy-900" : "text-graphite-400")}>
+              {scoreText(match)}
+            </span>
+            <span className={cn("truncate", winnerB ? "font-semibold text-navy-900" : "text-graphite-600")}>
+              {match.player_b_name}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GroupMatchesList({ matches }: { matches: TournamentMatch[] }) {
+  const roundNumbers = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
+  if (roundNumbers.length <= 1) {
+    return <MatchesTable matches={matches} />;
+  }
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {roundNumbers.map((round) => {
+        const roundMatches = matches.filter((m) => m.round === round);
+        return (
+          <div key={round} className="border border-navy-100 bg-white">
+            <div className="border-b border-navy-100 bg-mist px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-700">
+              {round}-й круг
+            </div>
+            <MatchesTable matches={roundMatches} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Текстовые результаты спрятаны под раскрывающийся блок: основной вид — таблица и сетка. */
+function ResultsToggle({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border border-navy-100 bg-white px-4 py-3 font-display text-[12px] uppercase tracking-[0.14em] text-graphite-700 transition-colors hover:border-navy-200 hover:text-navy-900 [&::-webkit-details-marker]:hidden">
+        {title}
+        <ChevronDown size={16} className="shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
 export default function TournamentDetailPage() {
   const { id = "" } = useParams();
   const tournament = useAsync((signal) => api.public.tournament(id, signal), [id]);
@@ -117,6 +187,9 @@ export default function TournamentDetailPage() {
                 </span>
               </div>
               <CrossTable standings={group.standings} matches={group.matches} />
+              <ResultsToggle title="Результаты встреч списком">
+                <GroupMatchesList matches={group.matches} />
+              </ResultsToggle>
             </div>
           ))}
 
@@ -131,6 +204,16 @@ export default function TournamentDetailPage() {
                 </p>
               </div>
               <BracketView rounds={item.playoff} places={placeByAthlete} />
+              <ResultsToggle title="Результаты встреч списком">
+                <div className="space-y-5">
+                  {item.playoff.map((round) => (
+                    <div key={`${round.place_from ?? 0}:${round.round}`} className="space-y-2">
+                      <h3 className="font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">{round.label}</h3>
+                      <MatchesTable matches={round.matches} />
+                    </div>
+                  ))}
+                </div>
+              </ResultsToggle>
             </div>
           )}
 
