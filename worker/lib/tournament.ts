@@ -812,6 +812,9 @@ export function planFinalize(
   });
   for (const match of ordered) {
     if (!hasScore(match)) continue;
+    // Техническая победа и поражение идут только в зачёт мест: рейтинг за такую
+    // встречу не начисляется ни победителю, ни проигравшему (так же, как в книге).
+    if (match.tech_loss_a || match.tech_loss_b) continue;
     const ratingA = before.get(match.player_a);
     const ratingB = before.get(match.player_b);
     if (ratingA === undefined || ratingB === undefined) continue;
