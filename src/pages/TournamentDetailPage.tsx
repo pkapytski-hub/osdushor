@@ -13,6 +13,9 @@ import type { TournamentMatch, TournamentStanding } from "@/lib/types";
 
 function scoreText(match: TournamentMatch): string {
   if (match.score_a === null || match.score_b === null) return "—";
+  // Техническая победа — как в протоколе: «w» у победителя и 0 у соперника.
+  if (match.tech_loss_a) return "0:w";
+  if (match.tech_loss_b) return "w:0";
   return `${match.score_a}:${match.score_b}`;
 }
 

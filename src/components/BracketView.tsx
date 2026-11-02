@@ -46,6 +46,20 @@ function lastMatchByAthlete(rounds: TournamentPlayoffRound[]): Map<string, strin
   return result;
 }
 
+/**
+ * Счёт строки в сетке. Техническую победу пишем как в протоколе — «w» у победителя
+ * и 0 у соперника, чтобы её не путали с обычным счётом 3:0.
+ */
+function scoreLabel(match: TournamentMatch, side: "a" | "b"): number | string | null {
+  const own = side === "a" ? match.score_a : match.score_b;
+  if (own === null) return null;
+  const lostByTech = side === "a" ? match.tech_loss_a : match.tech_loss_b;
+  const wonByTech = side === "a" ? match.tech_loss_b : match.tech_loss_a;
+  if (lostByTech) return 0;
+  if (wonByTech) return "w";
+  return own;
+}
+
 function MatchCard({
   match,
   places,
@@ -62,20 +76,21 @@ function MatchCard({
     {
       id: match.player_a,
       name: match.player_a_name,
-      score: match.score_a,
+      score: scoreLabel(match, "a"),
       winner: match.winner_id !== null && match.winner_id === match.player_a,
       place: placeFor(match.player_a),
     },
     {
       id: match.player_b,
       name: match.player_b_name,
-      score: match.score_b,
+      score: scoreLabel(match, "b"),
       winner: match.winner_id !== null && match.winner_id === match.player_b,
       place: placeFor(match.player_b),
     },
   ];
   return (
     <div
+      title={match.tech_loss_a || match.tech_loss_b ? "Техническая победа: соперник отдал встречу" : undefined}
       className={cn(
         "flex h-full flex-col justify-center gap-0.5 border bg-white px-2",
         played ? "border-navy-200" : "border-dashed border-navy-100",
