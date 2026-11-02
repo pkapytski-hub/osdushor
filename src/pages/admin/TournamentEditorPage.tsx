@@ -827,6 +827,13 @@ export default function TournamentEditorPage() {
               </div>
               <BracketView
                 rounds={data.playoff.map((round) => ({ ...round, matches: round.matches.map(previewMatch) }))}
+                places={
+                  new Map(
+                    data.participants
+                      .filter((participant) => participant.place !== null)
+                      .map((participant) => [participant.athlete_id, Number(participant.place)]),
+                  )
+                }
                 className="mt-4"
               />
             </section>

@@ -88,6 +88,12 @@ export default function TournamentDetailPage() {
 
   const item = tournament.data.item;
   const t = item.tournament;
+  // Место спортсмена появляется в сетке, как только он провёл последнюю встречу.
+  const placeByAthlete = new Map(
+    item.participants
+      .filter((participant) => participant.place !== null)
+      .map((participant) => [participant.athlete_id, Number(participant.place)]),
+  );
 
   return (
     <>
@@ -181,7 +187,7 @@ export default function TournamentDetailPage() {
                     : "Победители проходят в следующий круг, проигравшие заканчивают борьбу за медали."}
                 </p>
               </div>
-              <BracketView rounds={item.playoff} />
+              <BracketView rounds={item.playoff} places={placeByAthlete} />
             </div>
           )}
 
@@ -191,6 +197,29 @@ export default function TournamentDetailPage() {
               <MatchesTable matches={round.matches} />
             </div>
           ))}
+
+          {t.format === "olympic" && !t.is_finished && placeByAthlete.size > 0 && (
+            <div className="space-y-3 border-t border-navy-200 pt-10">
+              <h2 className="text-3xl">Занятые места</h2>
+              <p className="max-w-3xl text-sm text-graphite-600">
+                Место известно у тех, кто уже провёл последнюю встречу. Остальные продолжают борьбу: их место определится после последней встречи.
+              </p>
+              <div className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                {item.participants
+                  .filter((participant) => placeByAthlete.has(participant.athlete_id))
+                  .sort((a, b) => Number(a.place) - Number(b.place))
+                  .map((participant) => (
+                    <div
+                      key={participant.athlete_id}
+                      className="flex items-baseline justify-between gap-3 border-b border-navy-100 py-1.5 text-sm"
+                    >
+                      <span className="truncate text-navy-900">{participant.full_name}</span>
+                      <span className="font-display text-navy-900">{participant.place}-е</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {t.is_finished && item.participants.length > 0 && (
             <div className="space-y-3 border-t border-navy-200 pt-10">

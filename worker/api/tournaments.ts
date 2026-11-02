@@ -156,6 +156,9 @@ async function tournamentView(env: Env, data: FullTournament) {
   const groupMatchesList = matches.filter((match) => match.stage === "group");
   const playoffMatches = matches.filter((match) => match.stage === "playoff");
   const bracketPlan = tournament.format === "olympic" ? planBracket(participants, matches) : null;
+  // Место определяется сразу после последней встречи спортсмена, поэтому
+  // показываем его ещё до подведения итогов турнира.
+  const decidedPlaces = bracketPlan?.places ?? new Map<string, number>();
 
   // Группы общие для всех лиг: лига влияет только на время турнира.
   const groupNumbers = [...new Set(groupMatchesList.map((match) => match.group_no).filter((value): value is number => value != null))].sort(
@@ -266,7 +269,7 @@ async function tournamentView(env: Env, data: FullTournament) {
       .map((participant) => ({
         ...participant,
         rating_after: participant.rating_after ?? null,
-        place: participant.place ?? null,
+        place: participant.place ?? decidedPlaces.get(participant.athlete_id) ?? null,
         projected_rating:
           tournament.is_finished === 0 && plan
             ? plan.ratingAfter.get(participant.athlete_id) ?? participant.rating_before
