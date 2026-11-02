@@ -52,7 +52,37 @@ const BEST_OF_SCORES: Record<number, string> = {
 };
 
 type Scores = Record<string, { a: string; b: string }>;
-type TechLoss = Record<string, { a: boolean; b: boolean }>;
+
+interface ParsedScore {
+  a: number;
+  b: number;
+  techLossA: boolean;
+  techLossB: boolean;
+}
+
+/** Сколько партий нужно выиграть: у плей-офф — общее, у группы — своё. */
+function winSetsOfMatch(match: TournamentMatch, data: TournamentDetail | null): number {
+  if (match.stage === "playoff") return data?.playoff[0]?.sets_to_win ?? 3;
+  return data?.groups.find((group) => group.group_no === match.group_no)?.sets_to_win ?? 3;
+}
+
+/**
+ * Разбор введённого счёта. «w» вместо числа партий у победителя при 0 у соперника —
+ * техническая победа: встреча пишется со счётом до победы, проигравшему — техпоражение
+ * (0 очков в таблице). Пока счёт не сложился, возвращает null.
+ */
+function parseScoreEntry(values: { a: string; b: string }, winSets: number): ParsedScore | null {
+  const rawA = values.a.trim().toLowerCase();
+  const rawB = values.b.trim().toLowerCase();
+  if (rawA === "w" && rawB === "w") return null;
+  if (rawA === "w") return rawB === "0" ? { a: winSets, b: 0, techLossA: false, techLossB: true } : null;
+  if (rawB === "w") return rawA === "0" ? { a: 0, b: winSets, techLossA: true, techLossB: false } : null;
+  if (rawA === "" || rawB === "") return null;
+  const a = Number(rawA);
+  const b = Number(rawB);
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) return null;
+  return { a, b, techLossA: false, techLossB: false };
+}
 
 interface PendingConfirm {
   title: string;
@@ -112,7 +142,6 @@ export default function TournamentEditorPage() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scores, setScores] = useState<Scores>({});
-  const [techLoss, setTechLoss] = useState<TechLoss>({});
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
@@ -120,7 +149,7 @@ export default function TournamentEditorPage() {
 
   // Счёт, уже набранный в полях, применяем к таблице сразу, ещё до сохранения.
   const previewScores = useMemo(() => {
-    const result = new Map<string, { a: number; b: number }>();
+    const result = new Map<string, ParsedScore>();
     if (!data) return result;
     for (const match of [
       ...data.groups.flatMap((group) => group.matches),
@@ -128,10 +157,8 @@ export default function TournamentEditorPage() {
     ]) {
       const values = scores[match.id];
       if (!values) continue;
-      const a = values.a.trim() === "" ? null : Number(values.a);
-      const b = values.b.trim() === "" ? null : Number(values.b);
-      if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) continue;
-      result.set(match.id, { a, b });
+      const parsed = parseScoreEntry(values, winSetsOfMatch(match, data));
+      if (parsed) result.set(match.id, parsed);
     }
     return result;
   }, [data, scores]);
@@ -143,7 +170,6 @@ export default function TournamentEditorPage() {
       ...data.playoff.flatMap((round) => round.matches),
     ].map((match) => {
       const typed = previewScores.get(match.id);
-      const flags = techLoss[match.id] ?? { a: false, b: false };
       return {
         id: match.id,
         stage: match.stage,
@@ -154,8 +180,8 @@ export default function TournamentEditorPage() {
         player_b: match.player_b,
         score_a: typed ? typed.a : match.score_a,
         score_b: typed ? typed.b : match.score_b,
-        tech_loss_a: Boolean(match.tech_loss_a) || flags.a,
-        tech_loss_b: Boolean(match.tech_loss_b) || flags.b,
+        tech_loss_a: typed ? typed.techLossA : Boolean(match.tech_loss_a),
+        tech_loss_b: typed ? typed.techLossB : Boolean(match.tech_loss_b),
       };
     });
     return data.groups.map((group) => {
@@ -172,7 +198,7 @@ export default function TournamentEditorPage() {
       });
       return { group_no: group.group_no, rows };
     });
-  }, [data, previewScores, techLoss]);
+  }, [data, previewScores]);
 
   const apply = (item: TournamentDetail) => {
     setData(item);
@@ -192,16 +218,18 @@ export default function TournamentEditorPage() {
     }
     setSelected(new Set(item.participants.map((participant) => participant.athlete_id)));
     const next: Scores = {};
-    const nextTechLoss: TechLoss = {};
     for (const match of [...item.groups.flatMap((group) => group.matches), ...item.playoff.flatMap((round) => round.matches)]) {
-      next[match.id] = {
-        a: match.score_a === null ? "" : String(match.score_a),
-        b: match.score_b === null ? "" : String(match.score_b),
-      };
-      nextTechLoss[match.id] = { a: Boolean(match.tech_loss_a), b: Boolean(match.tech_loss_b) };
+      // Техническую победу показываем так же, как её вводят: «w» вместо счёта.
+      next[match.id] = match.tech_loss_a
+        ? { a: "0", b: "w" }
+        : match.tech_loss_b
+          ? { a: "w", b: "0" }
+          : {
+              a: match.score_a === null ? "" : String(match.score_a),
+              b: match.score_b === null ? "" : String(match.score_b),
+            };
     }
     setScores(next);
-    setTechLoss(nextTechLoss);
   };
 
   const load = async () => {
@@ -280,61 +308,43 @@ export default function TournamentEditorPage() {
     }, "Сетка плей-офф сформирована");
   };
 
-  // Длина встречи приходит с сервера: она зависит от размера группы.
-  const winSetsOf = (match: TournamentMatch): number => {
-    if (match.stage === "playoff") return data?.playoff[0]?.sets_to_win ?? 3;
-    return data?.groups.find((group) => group.group_no === match.group_no)?.sets_to_win ?? 3;
-  };
-
-  // Техническое поражение записывается в пользу соперника со счётом до победы.
-  const toggleTechLoss = (target: TournamentMatch, side: "a" | "b") => {
-    const current = techLoss[target.id] ?? { a: false, b: false };
-    const next = !current[side];
-    setTechLoss((state) => ({
-      ...state,
-      [target.id]: { a: side === "a" ? next : false, b: side === "b" ? next : false },
-    }));
-    if (next) {
-      const winSets = winSetsOf(target);
-      setScores((state) => ({
-        ...state,
-        [target.id]: side === "a" ? { a: "0", b: String(winSets) } : { a: String(winSets), b: "0" },
-      }));
-    }
-  };
-
   const saveMatch = async (match: TournamentMatch) => {
     if (!id) return;
+    const winSets = winSetsOfMatch(match, data);
     const values = scores[match.id] ?? { a: "", b: "" };
-    const scoreA = values.a === "" ? null : Number(values.a);
-    const scoreB = values.b === "" ? null : Number(values.b);
-    if ((scoreA === null) !== (scoreB === null)) {
-      toast.error("Заполните оба поля счёта или очистите оба.");
+    const empty = values.a.trim() === "" && values.b.trim() === "";
+    const half = (values.a.trim() === "") !== (values.b.trim() === "");
+    if (half) {
+      toast.error("Заполните оба поля: счёт или «w» у победителя и 0 у соперника.");
       return;
     }
-    if (scoreA !== null && scoreB !== null && (scoreA === scoreB || scoreA < 0 || scoreB < 0)) {
-      toast.error("Счёт должен быть разным и неотрицательным.");
+    const parsed = empty ? null : parseScoreEntry(values, winSets);
+    if (!empty && !parsed) {
+      toast.error("Счёт не подходит: партии до победы или «w» у победителя и 0 у соперника.");
       return;
     }
-    if (scoreA !== null && scoreB !== null) {
-      const winSets = winSetsOf(match);
-      if (Math.max(scoreA, scoreB) !== winSets || Math.min(scoreA, scoreB) >= winSets) {
+    if (parsed) {
+      if (parsed.a === parsed.b) {
+        toast.error("Счёт должен быть разным: нужен победитель.");
+        return;
+      }
+      if (Math.max(parsed.a, parsed.b) !== winSets || Math.min(parsed.a, parsed.b) >= winSets) {
         toast.error(`Встреча идёт до ${winSets} партий: у победителя — ${winSets}, у соперника — меньше.`);
         return;
       }
     }
+    const tech = Boolean(parsed && (parsed.techLossA || parsed.techLossB));
     await run(async () => {
-      const flags = techLoss[match.id] ?? { a: false, b: false };
       const response = await api.admin.tournaments.score(
         id,
         match.id,
-        scoreA,
-        scoreB,
-        scoreA !== null && flags.a,
-        scoreB !== null && flags.b,
+        parsed?.a ?? null,
+        parsed?.b ?? null,
+        parsed?.techLossA ?? false,
+        parsed?.techLossB ?? false,
       );
       apply(response.item);
-    }, "Результат сохранён");
+    }, tech ? "Техническая победа сохранена" : "Результат сохранён");
   };
 
   const finalize = async () => {
@@ -389,13 +399,12 @@ export default function TournamentEditorPage() {
   const previewMatch = (match: TournamentMatch): TournamentMatch => {
     const typed = previewScores.get(match.id);
     if (!typed) return match;
-    const flags = techLoss[match.id] ?? { a: false, b: false };
     return {
       ...match,
       score_a: typed.a,
       score_b: typed.b,
-      tech_loss_a: Boolean(match.tech_loss_a) || flags.a,
-      tech_loss_b: Boolean(match.tech_loss_b) || flags.b,
+      tech_loss_a: typed.techLossA,
+      tech_loss_b: typed.techLossB,
       winner_id: typed.a === typed.b ? null : typed.a > typed.b ? match.player_a : match.player_b,
       delta_a: null,
       delta_b: null,
@@ -761,9 +770,7 @@ export default function TournamentEditorPage() {
                               key={match.id}
                               match={match}
                               scores={scores[match.id] ?? { a: "", b: "" }}
-                              tech={techLoss[match.id] ?? { a: false, b: false }}
                               winSets={group.sets_to_win}
-                              onTechLoss={(side) => toggleTechLoss(match, side)}
                               finished={finished}
                               busy={busy}
                               onChange={(side, value) =>
@@ -793,9 +800,7 @@ export default function TournamentEditorPage() {
                                     key={match.id}
                                     match={match}
                                     scores={scores[match.id] ?? { a: "", b: "" }}
-                                    tech={techLoss[match.id] ?? { a: false, b: false }}
                                     winSets={group.sets_to_win}
-                                    onTechLoss={(side) => toggleTechLoss(match, side)}
                                     finished={finished}
                                     busy={busy}
                                     onChange={(side, value) =>
@@ -857,9 +862,7 @@ export default function TournamentEditorPage() {
                       key={match.id}
                       match={match}
                       scores={scores[match.id] ?? { a: "", b: "" }}
-                      tech={techLoss[match.id] ?? { a: false, b: false }}
                       winSets={round.sets_to_win}
-                      onTechLoss={(side) => toggleTechLoss(match, side)}
                       finished={finished}
                       busy={busy}
                       onChange={(side, value) =>
@@ -957,71 +960,69 @@ export default function TournamentEditorPage() {
 function MatchRow({
   match,
   scores,
-  tech,
   winSets,
   finished,
   busy,
   onChange,
-  onTechLoss,
   onSave,
 }: {
   match: TournamentMatch;
   scores: { a: string; b: string };
-  tech: { a: boolean; b: boolean };
   /** Сколько партий нужно выиграть: 3 из 5, 4 из 7, 2 из 3. */
   winSets: number;
   finished: boolean;
   busy: boolean;
   onChange: (side: "a" | "b", value: string) => void;
-  onTechLoss: (side: "a" | "b") => void;
   onSave: () => void;
 }) {
   const winnerA = match.winner_id === match.player_a;
   const winnerB = match.winner_id === match.player_b;
   // Счёт, который сейчас набран в полях: показываем его сразу, не дожидаясь сохранения.
-  const rawA = scores.a.trim();
-  const rawB = scores.b.trim();
-  const filled =
-    rawA !== "" && rawB !== "" && Number.isFinite(Number(rawA)) && Number.isFinite(Number(rawB));
-  const typedA = Number(rawA);
-  const typedB = Number(rawB);
-  const decided = filled && typedA !== typedB;
-  const previewWinner = decided ? (typedA > typedB ? "a" : "b") : null;
-  const legal = decided && Math.max(typedA, typedB) === winSets && Math.min(typedA, typedB) < winSets;
-  const unsavedScore = decided && (match.score_a !== typedA || match.score_b !== typedB);
+  const parsed = parseScoreEntry(scores, winSets);
+  const scoreA = parsed ? parsed.a : null;
+  const scoreB = parsed ? parsed.b : null;
+  const decided = scoreA !== null && scoreB !== null && scoreA !== scoreB;
+  const previewWinner = !decided ? null : (scoreA as number) > (scoreB as number) ? "a" : "b";
+  const legal =
+    decided &&
+    Math.max(scoreA as number, scoreB as number) === winSets &&
+    Math.min(scoreA as number, scoreB as number) < winSets;
+  const techWinner = parsed?.techLossA ? "b" : parsed?.techLossB ? "a" : null;
+  const unsavedScore = decided && (match.score_a !== scoreA || match.score_b !== scoreB);
   const winnerName = previewWinner === "a" ? match.player_a_name : match.player_b_name;
+  // В поле вводится число партий или «w» — техническая победа при 0 у соперника.
+  const change = (side: "a" | "b", value: string) => {
+    onChange(side, value.replace(/[^0-9wW]/g, "").slice(0, 1));
+  };
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
       <span className={cn("min-w-0 flex-1 truncate text-right", winnerA || previewWinner === "a" ? "font-semibold text-navy-900" : "text-graphite-700")}>
         {match.player_a_name}
       </span>
       {finished ? (
-        <span className="min-w-16 text-center font-display text-base text-navy-900">
-          {match.score_a ?? "—"}:{match.score_b ?? "—"}
+        <span
+          className="min-w-16 text-center font-display text-base text-navy-900"
+          title={
+            match.tech_loss_a || match.tech_loss_b
+              ? "Техническая победа: соперник отдал встречу"
+              : undefined
+          }
+        >
+          {match.tech_loss_a
+            ? "0 : w"
+            : match.tech_loss_b
+              ? "w : 0"
+              : `${match.score_a ?? "—"}:${match.score_b ?? "—"}`}
         </span>
       ) : (
         <span className="order-last flex w-full items-center justify-center gap-1 sm:order-none sm:w-auto">
-          <button
-            type="button"
-            onClick={() => onTechLoss("a")}
-            className={cn(
-              "h-9 w-7 shrink-0 border text-[10px] font-semibold",
-              tech.a
-                ? "border-accent-600 bg-accent-50 text-accent-700"
-                : "border-navy-100 text-graphite-400 hover:text-graphite-700",
-            )}
-            title="Техническое поражение"
-            aria-pressed={tech.a}
-            aria-label={`Техническое поражение ${match.player_a_name}`}
-          >
-            ТП
-          </button>
           <input
-            type="number"
-            min={0}
-            max={winSets}
+            type="text"
+            inputMode="numeric"
             value={scores.a}
-            onChange={(event) => onChange("a", event.target.value)}
+            onChange={(event) => change("a", event.target.value)}
+            placeholder={String(winSets)}
+            title="Выигранные партии. «w» вместо счёта при 0 у соперника — техническая победа."
             className={cn(
               "field-input !min-h-9 w-14 px-2 py-1 text-center",
               legal && previewWinner === "a" && "border-emerald-600 font-semibold text-emerald-800",
@@ -1031,11 +1032,12 @@ function MatchRow({
           />
           <span className="text-graphite-400">:</span>
           <input
-            type="number"
-            min={0}
-            max={winSets}
+            type="text"
+            inputMode="numeric"
             value={scores.b}
-            onChange={(event) => onChange("b", event.target.value)}
+            onChange={(event) => change("b", event.target.value)}
+            placeholder={String(winSets)}
+            title="Выигранные партии. «w» вместо счёта при 0 у соперника — техническая победа."
             className={cn(
               "field-input !min-h-9 w-14 px-2 py-1 text-center",
               legal && previewWinner === "b" && "border-emerald-600 font-semibold text-emerald-800",
@@ -1043,21 +1045,6 @@ function MatchRow({
             )}
             aria-label={`Счёт ${match.player_b_name}`}
           />
-          <button
-            type="button"
-            onClick={() => onTechLoss("b")}
-            className={cn(
-              "h-9 w-7 shrink-0 border text-[10px] font-semibold",
-              tech.b
-                ? "border-accent-600 bg-accent-50 text-accent-700"
-                : "border-navy-100 text-graphite-400 hover:text-graphite-700",
-            )}
-            title="Техническое поражение"
-            aria-pressed={tech.b}
-            aria-label={`Техническое поражение ${match.player_b_name}`}
-          >
-            ТП
-          </button>
         </span>
       )}
       <span className={cn("min-w-0 flex-1 truncate", winnerB ? "font-semibold text-navy-900" : "text-graphite-700")}>
@@ -1083,9 +1070,11 @@ function MatchRow({
       )}
       {unsavedScore && (
         <p className={cn("w-full text-[11px] leading-tight", legal ? "text-emerald-700" : "text-accent-700")}>
-          {legal
-            ? `Предпросмотр, ещё не сохранено: ${typedA}:${typedB} — победа ${winnerName}`
-            : `Счёт пока не финальный: встреча идёт до ${winSets} партий, у победителя — ${winSets}`}
+          {techWinner
+            ? `Предпросмотр, ещё не сохранено: техническая победа ${winnerName} — ${scoreA}:${scoreB}`
+            : legal
+              ? `Предпросмотр, ещё не сохранено: ${scoreA}:${scoreB} — победа ${winnerName}`
+              : `Счёт пока не финальный: встреча идёт до ${winSets} партий, у победителя — ${winSets}`}
         </p>
       )}
     </div>
