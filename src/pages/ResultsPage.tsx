@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, FileText, Trophy } from "lucide-react";
 import { Seo } from "@/components/Seo";
@@ -15,6 +16,20 @@ export default function ResultsPage() {
 
   const items = results.data?.items ?? [];
   const archiveItems = archive.data?.items ?? [];
+  const [archiveYear, setArchiveYear] = useState("");
+
+  const archiveYears = [
+    ...new Set(
+      archiveItems
+        .map((item) => parseDate(item.starts_on)?.getFullYear())
+        .filter((year): year is number => typeof year === "number"),
+    ),
+  ].sort((a, b) => b - a);
+  const visibleArchive = archiveYear
+    ? archiveItems.filter(
+        (item) => String(parseDate(item.starts_on)?.getFullYear() ?? "") === archiveYear,
+      )
+    : archiveItems;
 
   const groups = new Map<string, Competition[]>();
   for (const item of items) {
@@ -118,14 +133,37 @@ export default function ResultsPage() {
                 <h2 className="font-display text-3xl text-navy-900">Архив выступлений</h2>
                 <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
                 <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
-                  {archiveItems.length} {archiveItems.length === 1 ? "соревнование" : archiveItems.length < 5 ? "соревнования" : "соревнований"}
+                  {visibleArchive.length} {visibleArchive.length === 1 ? "соревнование" : visibleArchive.length < 5 ? "соревнования" : "соревнований"}
                 </span>
               </div>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-graphite-600">
                 Места воспитанников на соревнованиях календаря: слева место, справа имя. Имя ведёт в карточку спортсмена.
               </p>
+              {archiveYears.length > 1 && (
+                <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Фильтр архива по году">
+                  <button
+                    type="button"
+                    className={cn("chip", !archiveYear && "chip-active")}
+                    aria-pressed={!archiveYear}
+                    onClick={() => setArchiveYear("")}
+                  >
+                    Все годы
+                  </button>
+                  {archiveYears.map((year) => (
+                    <button
+                      key={year}
+                      type="button"
+                      className={cn("chip", archiveYear === String(year) && "chip-active")}
+                      aria-pressed={archiveYear === String(year)}
+                      onClick={() => setArchiveYear(String(year))}
+                    >
+                      {year}
+                    </button>
+                  ))}
+                </div>
+              )}
               <ul className="mt-6 divide-y divide-navy-100 border-y border-navy-100">
-                {archiveItems.map((item) => (
+                {visibleArchive.map((item) => (
                   <li key={item.id} className="py-4">
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                       <span className="text-[11px] uppercase tracking-[0.16em] text-graphite-500">
