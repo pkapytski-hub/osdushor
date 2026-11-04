@@ -35,6 +35,7 @@ export default function CompetitionDetailPage() {
   }
 
   const item = competition.data.item;
+  const archive = competition.data.results ?? [];
   const statusStyles = {
     upcoming: "border-navy-300 bg-white text-navy-800",
     ongoing: "border-accent-600 bg-accent-600 text-white",
@@ -159,18 +160,52 @@ export default function CompetitionDetailPage() {
                     <Download size={17} className="text-graphite-400" aria-hidden="true" />
                   </a>
                 ) : null}
+                {archive.length > 0 && (
+                  <div>
+                    <p className="font-display text-[12px] uppercase tracking-[0.16em] text-accent-700">
+                      Места воспитанников
+                    </p>
+                    <ul className="mt-3 divide-y divide-navy-100 border-y border-navy-100">
+                      {archive.map((row) => (
+                        <li key={row.id} className="flex items-baseline gap-3 py-2.5">
+                          <span
+                            className={cn(
+                              "w-7 shrink-0 text-right font-display text-base leading-6",
+                              row.place === 1 ? "text-accent-600" : "text-navy-900",
+                            )}
+                          >
+                            {row.place ?? "—"}
+                          </span>
+                          <div className="min-w-0">
+                            <Link
+                              to={`/sportsmeny/${row.athlete_id}`}
+                              className="text-sm text-navy-900 transition-colors hover:text-accent-600"
+                            >
+                              {row.full_name}
+                            </Link>
+                            {(row.age_category || row.event_kind) && (
+                              <span className="ml-2 text-xs text-graphite-500">
+                                {[row.age_category, row.event_kind].filter(Boolean).join(" · ")}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {item.results_text ? (
                   <div className="border-l-2 border-accent-600 bg-mist p-5">
                     <p className="font-display text-[12px] uppercase tracking-[0.16em] text-accent-700">Итоги</p>
                     <div className="mt-2 whitespace-pre-line text-sm leading-relaxed text-graphite-700">{item.results_text}</div>
                   </div>
-                ) : (
+                ) : archive.length === 0 ? (
                   <p className="text-sm text-graphite-500">
                     {item.status === "finished"
                       ? "Результаты готовятся к публикации."
                       : "Результаты появятся после завершения соревнования."}
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
 

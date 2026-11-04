@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS competitions (
   meta_description TEXT,
   is_demo INTEGER NOT NULL DEFAULT 0,
   is_published INTEGER NOT NULL DEFAULT 1,
+  -- Страница из базы «Календарь соревнований» в Notion.
+  notion_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -222,9 +224,19 @@ CREATE TABLE IF NOT EXISTS athletes (
   id TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
   birth_year INTEGER,
+  -- Полная дата рождения нужна только для блока «Сегодня день рождения»:
+  -- на страницах сайта показываются имя, год рождения и разряд.
+  birth_date TEXT,
   gender TEXT NOT NULL DEFAULT '',
   rating REAL NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
+  -- Внешний идентификатор страницы Notion: по нему импорт обновляет запись,
+  -- а не создаёт дубль. Остальные поля — карточка из базы «Спортсмены».
+  notion_id TEXT,
+  sport_rank TEXT,
+  group_name TEXT,
+  coach TEXT,
+  athlete_status TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -305,6 +317,27 @@ CREATE TABLE IF NOT EXISTS rating_history (
 );
 CREATE INDEX IF NOT EXISTS idx_rating_history_athlete ON rating_history(athlete_id, held_on DESC);
 CREATE INDEX IF NOT EXISTS idx_rating_history_tournament ON rating_history(tournament_id);
+
+-- Архив результатов из Notion: спортсмен и занятое им место. Это только
+-- история — рейтинг школы считается по клубным турнирам и от этих строк не
+-- зависит. Соревнование может быть не привязано, если его нет в календаре.
+CREATE TABLE IF NOT EXISTS competition_results (
+  id TEXT PRIMARY KEY,
+  notion_id TEXT,
+  competition_id TEXT REFERENCES competitions(id) ON DELETE CASCADE,
+  athlete_id TEXT REFERENCES athletes(id) ON DELETE CASCADE,
+  held_on TEXT,
+  place INTEGER,
+  age_category TEXT,
+  event_kind TEXT,
+  city TEXT,
+  source_title TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_competition_results_notion ON competition_results(notion_id);
+CREATE INDEX IF NOT EXISTS idx_competition_results_athlete ON competition_results(athlete_id, held_on DESC);
+CREATE INDEX IF NOT EXISTS idx_competition_results_competition ON competition_results(competition_id, place);
 
 -- Настройки по умолчанию. Пустые значения — осознанные заготовки:
 -- администрация заполняет их через панель, публичный сайт показывает «Уточняется».

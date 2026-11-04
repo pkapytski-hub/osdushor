@@ -147,6 +147,40 @@ export async function getSeo(env: Env, origin: string, pathname: string): Promis
     };
   }
 
+  // Карточка спортсмена: id есть в базе, поэтому страница существует и индексируется.
+  const athleteMatch = path.match(/^\/sportsmeny\/([^/]+)$/);
+  if (athleteMatch) {
+    const athleteId = decodeURIComponent(athleteMatch[1]);
+    const row = await env.DB.prepare(
+      "SELECT full_name, birth_year, sport_rank FROM athletes WHERE id = ?",
+    )
+      .bind(athleteId)
+      .first<{
+        full_name: string;
+        birth_year: number | null;
+        sport_rank: string | null;
+      }>();
+    if (!row)
+      return { ...fallback, title: "Спортсмен не найден", canonical: `${origin}${path}`, noindex: true, known: false, status: 404, jsonLd: null };
+    const facts = [
+      row.birth_year ? `${row.birth_year} г. р.` : "",
+      row.sport_rank ? `разряд: ${row.sport_rank}` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return {
+      ...fallback,
+      title: `${row.full_name} — спортсмен школы`,
+      description: `${row.full_name}: спортсмен Гродненской ОСДЮШОР по настольному теннису${facts ? ` (${facts})` : ""}.`,
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        name: row.full_name,
+        memberOf: { "@type": "SportsOrganization", name: settings.org_short_name, url: origin },
+      },
+    };
+  }
+
   const seo = await env.DB.prepare(
     "SELECT title, description, og_image, is_indexable FROM page_seo WHERE path = ?",
   )

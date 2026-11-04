@@ -21,6 +21,7 @@ const RatingPage = lazy(() => import("@/pages/RatingPage"));
 const TournamentsPage = lazy(() => import("@/pages/TournamentsPage"));
 const TournamentDetailPage = lazy(() => import("@/pages/TournamentDetailPage"));
 const AchievementsPage = lazy(() => import("@/pages/AchievementsPage"));
+const AthletePage = lazy(() => import("@/pages/AthletePage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const DocumentsPage = lazy(() => import("@/pages/DocumentsPage"));
 const ContactsPage = lazy(() => import("@/pages/ContactsPage"));
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="turniry" element={<TournamentsPage />} />
             <Route path="turniry/:id" element={<TournamentDetailPage />} />
             <Route path="sportsmeny" element={<AchievementsPage />} />
+            <Route path="sportsmeny/:id" element={<AthletePage />} />
             <Route path="fotogalereya" element={<GalleryPage />} />
             <Route path="dokumenty" element={<DocumentsPage />} />
             <Route path="kontakty" element={<ContactsPage />} />

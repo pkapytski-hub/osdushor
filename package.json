@@ -22,6 +22,10 @@
     "db:studio": "wrangler d1 execute osdushor-db --local --command=\"SELECT key, value FROM site_settings\"",
     "db:athletes": "node scripts/seed-athletes.mjs",
     "db:athletes:remote": "node scripts/seed-athletes.mjs --remote",
+    "students:import": "node scripts/import-students.mjs",
+    "students:import:remote": "node scripts/import-students.mjs --remote",
+    "results:import": "node scripts/import-notion.mjs",
+    "results:import:remote": "node scripts/import-notion.mjs --remote",
     "deploy": "npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run --outdir=.wrangler/dry-run"
   },

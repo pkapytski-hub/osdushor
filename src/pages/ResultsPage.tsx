@@ -6,19 +6,25 @@ import { api, fileUrl } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { EmptyState, ErrorState, LoadingBlock, Reveal } from "@/components/site/primitives";
 import { formatDateRange, parseDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { Competition } from "@/lib/types";
 
 export default function ResultsPage() {
   const results = useAsync((signal) => api.public.results(signal), []);
+  const archive = useAsync((signal) => api.public.archive(signal), []);
+
+  const items = results.data?.items ?? [];
+  const archiveItems = archive.data?.items ?? [];
+
   const groups = new Map<string, Competition[]>();
-  if (results.data) {
-    for (const item of results.data.items) {
-      const year = String(parseDate(item.starts_on)?.getFullYear() ?? "Без года");
-      const list = groups.get(year) ?? [];
-      list.push(item);
-      groups.set(year, list);
-    }
+  for (const item of items) {
+    const year = String(parseDate(item.starts_on)?.getFullYear() ?? "Без года");
+    const list = groups.get(year) ?? [];
+    list.push(item);
+    groups.set(year, list);
   }
+  const nothingYet = !results.loading && !results.error && !archive.loading && items.length === 0;
+
   return (
     <>
       <Seo
@@ -43,7 +49,7 @@ export default function ResultsPage() {
         <div className="container-site">
           {results.loading && <LoadingBlock rows={3} />}
           {results.error && <ErrorState message={results.error} onRetry={results.reload} />}
-          {!results.loading && !results.error && results.data && results.data.items.length === 0 && (
+          {nothingYet && (
             <EmptyState
               icon={<Trophy size={22} aria-hidden="true" />}
               title="Результаты готовятся к публикации"
@@ -51,19 +57,19 @@ export default function ResultsPage() {
               action={<Link to="/kalendar" className="btn btn-outline btn-sm">Перейти в календарь</Link>}
             />
           )}
-          {results.data && results.data.items.length > 0 && (
+          {groups.size > 0 && (
             <div className="space-y-12">
-              {[...groups.entries()].map(([year, items]) => (
+              {[...groups.entries()].map(([year, yearItems]) => (
                 <section key={year}>
                   <div className="flex items-center gap-4">
                     <h2 className="font-display text-3xl text-navy-900">{year}</h2>
                     <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
                     <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
-                      {items.length} {items.length === 1 ? "турнир" : items.length < 5 ? "турнира" : "турниров"}
+                      {yearItems.length} {yearItems.length === 1 ? "турнир" : yearItems.length < 5 ? "турнира" : "турниров"}
                     </span>
                   </div>
                   <div className="mt-5 space-y-4">
-                    {items.map((item, index) => {
+                    {yearItems.map((item, index) => {
                       const href = fileUrl(item.results_path);
                       return (
                         <Reveal key={item.id} delay={index * 40}>
@@ -103,6 +109,73 @@ export default function ResultsPage() {
                 </section>
               ))}
             </div>
+          )}
+
+          {archive.loading && items.length > 0 && <LoadingBlock rows={2} />}
+          {archiveItems.length > 0 && (
+            <div className="mt-16">
+              <div className="flex items-center gap-4">
+                <h2 className="font-display text-3xl text-navy-900">Архив выступлений</h2>
+                <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
+                <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
+                  {archiveItems.length} {archiveItems.length === 1 ? "соревнование" : archiveItems.length < 5 ? "соревнования" : "соревнований"}
+                </span>
+              </div>
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-graphite-600">
+                Места воспитанников на соревнованиях календаря: слева место, справа имя. Имя ведёт в карточку спортсмена.
+              </p>
+              <ul className="mt-6 divide-y divide-navy-100 border-y border-navy-100">
+                {archiveItems.map((item) => (
+                  <li key={item.id} className="py-4">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span className="text-[11px] uppercase tracking-[0.16em] text-graphite-500">
+                        {formatDateRange(item.starts_on, item.ends_on)}
+                      </span>
+                      <h3 className="text-base text-navy-900">
+                        {item.slug ? (
+                          <Link to={`/kalendar/${item.slug}`} className="transition-colors hover:text-accent-600">
+                            {item.title}
+                          </Link>
+                        ) : (
+                          item.title
+                        )}
+                      </h3>
+                      {item.age_categories.length > 0 && (
+                        <span className="text-xs text-graphite-500">{item.age_categories.join(", ")}</span>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-sm leading-relaxed text-graphite-700">
+                      {item.results.map((row, index) => (
+                        <span key={row.id} className="whitespace-nowrap">
+                          {index > 0 && (
+                            <span className="px-1.5 text-navy-200" aria-hidden="true">
+                              ·
+                            </span>
+                          )}
+                          {row.place != null && (
+                            <>
+                              <span className={cn("font-display", row.place === 1 ? "text-accent-600" : "text-navy-900")}>
+                                {row.place}
+                              </span>
+                              <span className="text-graphite-400"> — </span>
+                            </>
+                          )}
+                          <Link
+                            to={`/sportsmeny/${row.athlete_id}`}
+                            className="text-navy-900 transition-colors hover:text-accent-600"
+                          >
+                            {row.full_name}
+                          </Link>
+                        </span>
+                      ))}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {archive.error && archiveItems.length === 0 && items.length > 0 && (
+            <p className="mt-12 text-sm text-graphite-500">Архив выступлений временно недоступен.</p>
           )}
         </div>
       </section>

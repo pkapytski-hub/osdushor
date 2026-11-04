@@ -14,6 +14,8 @@ import { parseDate } from "@/lib/format";
 export default function AchievementsPage() {
   const [level, setLevel] = useState("");
   const achievements = useAsync((signal) => api.public.achievements({ level }, signal), [level]);
+  const birthdays = useAsync((signal) => api.public.birthdays(signal), []);
+  const birthdayItems = birthdays.data?.items ?? [];
 
   const groups = new Map<string, NonNullable<typeof achievements.data>["items"]>();
   if (achievements.data) {
@@ -48,6 +50,21 @@ export default function AchievementsPage() {
 
       <section className="section bg-white">
         <div className="container-site">
+          {birthdayItems.length > 0 && (
+            <div className="mb-8 border border-accent-600/40 bg-mist/60 p-5 sm:p-6">
+              <p className="section-label">Сегодня день рождения</p>
+              <ul className="mt-4 flex flex-wrap gap-2">
+                {birthdayItems.map((person) => (
+                  <li key={person.id}>
+                    <Link to={`/sportsmeny/${person.id}`} className="chip chip-active">
+                      {person.full_name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-sm text-graphite-600">Поздравляем воспитанников школы!</p>
+            </div>
+          )}
           <div className="flex flex-col gap-4 border-b border-navy-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <button type="button" className={cn("chip", !level && "chip-active")} onClick={() => setLevel("")}>

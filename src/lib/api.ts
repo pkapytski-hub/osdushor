@@ -1,7 +1,11 @@
 import type {
   Achievement,
   AdminStats,
+  ArchiveCompetition,
+  ArchiveResult,
   Athlete,
+  AthleteProfile,
+  BirthdayItem,
   AuditEntry,
   Coach,
   Competition,
@@ -116,7 +120,10 @@ export const api = {
       signal?: AbortSignal,
     ) => get<ListResult<Competition>>(`/api/competitions${query(params)}`, signal),
     competition: (slug: string, signal?: AbortSignal) =>
-      get<{ item: Competition }>(`/api/competitions/${encodeURIComponent(slug)}`, signal),
+      get<{ item: Competition; results: ArchiveResult[] }>(
+        `/api/competitions/${encodeURIComponent(slug)}`,
+        signal,
+      ),
     coaches: (signal?: AbortSignal) => get<{ items: Coach[] }>("/api/coaches", signal),
     achievements: (params: { level?: string; year?: string }, signal?: AbortSignal) =>
       get<{ items: Achievement[] }>(`/api/achievements${query(params)}`, signal),
@@ -128,6 +135,10 @@ export const api = {
     schedule: (signal?: AbortSignal) => get<{ items: ScheduleEntry[] }>("/api/schedule", signal),
     history: (signal?: AbortSignal) => get<{ items: HistoryEvent[] }>("/api/history", signal),
     results: (signal?: AbortSignal) => get<{ items: Competition[] }>("/api/results", signal),
+    archive: (signal?: AbortSignal) => get<{ items: ArchiveCompetition[] }>("/api/archive", signal),
+    birthdays: (signal?: AbortSignal) => get<{ items: BirthdayItem[]; date: string }>("/api/birthdays", signal),
+    athlete: (id: string, signal?: AbortSignal) =>
+      get<{ item: AthleteProfile }>(`/api/athletes/${encodeURIComponent(id)}`, signal),
     feedback: (payload: Record<string, unknown>) =>
       mutate<{ accepted: boolean; message?: string }>("/api/feedback", "POST", payload),
     rating: (params: { q?: string; year?: string; gender?: string }, signal?: AbortSignal) =>

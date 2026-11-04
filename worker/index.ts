@@ -1,10 +1,13 @@
 import { ApiProblem, fail, isApiProblem, ok } from "./lib/http";
 import { ensureSchema } from "./lib/bootstrap";
 import {
+  getAthlete,
   getCompetition,
   getNews,
   health,
   listAchievements,
+  listArchive,
+  listBirthdays,
   listCoaches,
   listCompetitions,
   listDocuments,
@@ -87,6 +90,12 @@ async function apiRoute(request: Request, env: Env, url: URL): Promise<Response>
   if (head === "schedule" && isRead) return listSchedule(env);
   if (head === "history" && isRead) return listHistory(env);
   if (head === "results" && isRead) return listResults(env);
+  if (head === "archive" && isRead) return listArchive(env);
+  if (head === "birthdays" && isRead) return listBirthdays(env);
+  if (head === "athletes") {
+    if (rest.length === 1 && isRead) return getAthlete(env, decodeURIComponent(rest[0]));
+    return fail(404, "not_found", "Спортсмен не найден.");
+  }
   if (head === "rating" && isRead) return listRating(env, url);
   if (head === "tournaments") {
     if (rest.length === 0 && isRead) return listTournaments(env, url);

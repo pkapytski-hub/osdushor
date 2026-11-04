@@ -137,7 +137,18 @@ export async function getCompetition(env: Env, slug: string): Promise<Response> 
     .bind(slug)
     .first<Record<string, unknown>>();
   if (!row) return fail(404, "not_found", "Соревнование не найдено или ещё не опубликовано.");
-  return ok({ item: toCompetition(row) });
+  // Архив выступлений: места воспитанников именно на этом соревновании.
+  const archive = await env.DB.prepare(
+    `SELECT r.id, r.place, r.age_category, r.event_kind, r.city,
+            a.id AS athlete_id, a.full_name, a.birth_year
+     FROM competition_results r
+     JOIN athletes a ON a.id = r.athlete_id
+     WHERE r.competition_id = ?
+     ORDER BY r.age_category, r.place IS NULL, r.place, a.full_name`,
+  )
+    .bind(String(row.id))
+    .all<Record<string, unknown>>();
+  return ok({ item: toCompetition(row), results: archive.results ?? [] });
 }
 
 export async function listCoaches(env: Env): Promise<Response> {
@@ -232,6 +243,99 @@ export async function listResults(env: Env): Promise<Response> {
      ORDER BY starts_on DESC LIMIT 100`,
   ).all<Record<string, unknown>>();
   return ok({ items: (results ?? []).map(toCompetition) });
+}
+
+function parseCategories(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value ?? "[]"));
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+// Архив из Notion: места спортсменов на соревнованиях календаря. В отличие от
+// /api/results здесь показываются сами участники и занятые ими места.
+export async function listArchive(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT c.id AS competition_id, c.slug, c.title AS competition_title, c.starts_on, c.ends_on,
+            c.location, c.age_categories,
+            r.id, r.place, r.age_category, r.event_kind, r.city,
+            a.id AS athlete_id, a.full_name, a.birth_year
+     FROM competition_results r
+     JOIN competitions c ON c.id = r.competition_id
+     JOIN athletes a ON a.id = r.athlete_id
+     WHERE c.is_published = 1
+     ORDER BY c.starts_on DESC, r.place IS NULL, r.place, a.full_name`,
+  ).all<Record<string, unknown>>();
+
+  const byCompetition = new Map<string, Record<string, unknown> & { results: unknown[] }>();
+  for (const row of results ?? []) {
+    const id = String(row.competition_id);
+    let item = byCompetition.get(id);
+    if (!item) {
+      item = {
+        id,
+        slug: row.slug,
+        title: row.competition_title,
+        starts_on: row.starts_on,
+        ends_on: row.ends_on,
+        location: row.location,
+        age_categories: parseCategories(row.age_categories),
+        results: [],
+      };
+      byCompetition.set(id, item);
+    }
+    item.results.push({
+      id: row.id,
+      athlete_id: row.athlete_id,
+      full_name: row.full_name,
+      birth_year: row.birth_year,
+      place: row.place,
+      age_category: row.age_category,
+      event_kind: row.event_kind,
+      city: row.city,
+    });
+  }
+  return ok({ items: [...byCompetition.values()] });
+}
+
+// Карточка спортсмена: открытые поля (год рождения и разряд) и история мест.
+// Полная дата рождения, группа, тренер и приказы на сайт не попадают.
+export async function getAthlete(env: Env, id: string): Promise<Response> {
+  const athlete = await env.DB.prepare(
+    "SELECT id, full_name, birth_year, sport_rank FROM athletes WHERE id = ?",
+  )
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!athlete) return fail(404, "not_found", "Спортсмен не найден.");
+  const { results } = await env.DB.prepare(
+    `SELECT r.id, r.held_on, r.place, r.age_category, r.event_kind, r.city, r.source_title,
+            c.id AS competition_id, c.slug AS competition_slug, c.title AS competition_title, c.starts_on
+     FROM competition_results r
+     LEFT JOIN competitions c ON c.id = r.competition_id
+     WHERE r.athlete_id = ?
+     ORDER BY COALESCE(r.held_on, c.starts_on, '') DESC, r.place IS NULL, r.place`,
+  )
+    .bind(id)
+    .all<Record<string, unknown>>();
+  return ok({ item: { ...athlete, results: results ?? [] } });
+}
+
+// «Сегодня день рождения»: сравниваем только месяц и день, поэтому сама дата
+// рождения на сайт не выводится. D1 считает время по UTC, а школа живёт по
+// UTC+3 — «сегодня» берём со сдвигом, иначе утренние поздравления не попадут.
+export async function listBirthdays(env: Env): Promise<Response> {
+  const local = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+  const { results } = await env.DB.prepare(
+    `SELECT id, full_name
+     FROM athletes
+     WHERE is_active = 1 AND birth_date IS NOT NULL AND substr(birth_date, 6, 5) = ?
+     ORDER BY full_name`,
+  )
+    .bind(local.slice(5, 10))
+    .all<Record<string, unknown>>();
+  return ok({ items: results ?? [], date: local.slice(0, 10) });
 }
 
 export async function submitFeedback(request: Request, env: Env): Promise<Response> {

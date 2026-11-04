@@ -400,6 +400,57 @@ export interface TournamentListResponse {
   years: string[];
 }
 
+export interface ArchiveResult {
+  id: string;
+  athlete_id: string;
+  full_name: string;
+  birth_year: number | null;
+  place: number | null;
+  age_category: string | null;
+  event_kind: string | null;
+  city: string | null;
+}
+
+export interface ArchiveCompetition {
+  id: string;
+  slug: string | null;
+  title: string;
+  starts_on: string;
+  ends_on: string | null;
+  location: string;
+  age_categories: string[];
+  results: ArchiveResult[];
+}
+
+export interface AthleteProfileResult {
+  id: string;
+  held_on: string | null;
+  place: number | null;
+  age_category: string | null;
+  event_kind: string | null;
+  city: string | null;
+  source_title: string;
+  competition_id: string | null;
+  competition_slug: string | null;
+  competition_title: string | null;
+  starts_on: string | null;
+}
+
+/** Карточка спортсмена: год рождения, разряд и история мест. */
+export interface AthleteProfile {
+  id: string;
+  full_name: string;
+  birth_year: number | null;
+  sport_rank: string | null;
+  results: AthleteProfileResult[];
+}
+
+/** Спортсмен, у которого сегодня день рождения. */
+export interface BirthdayItem {
+  id: string;
+  full_name: string;
+}
+
 export interface ListResult<T> {
   items: T[];
   total: number;

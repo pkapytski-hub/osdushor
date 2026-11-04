@@ -140,7 +140,11 @@ export default function RatingPage() {
                               {item.place}
                             </span>
                           </td>
-                          <td className="px-4 py-3 font-medium text-navy-900">{item.full_name}</td>
+                          <td className="px-4 py-3 font-medium text-navy-900">
+                            <Link to={`/sportsmeny/${item.id}`} className="transition-colors hover:text-accent-600">
+                              {item.full_name}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3 text-graphite-600">{item.league} лига</td>
                           <td className="px-4 py-3 text-graphite-600">{item.birth_year ?? "—"}</td>
                           <td className="px-4 py-3 text-right font-display text-base text-navy-900">
@@ -158,7 +162,9 @@ export default function RatingPage() {
                         {item.place}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium text-navy-900">{item.full_name}</p>
+                        <Link to={`/sportsmeny/${item.id}`} className="block truncate font-medium text-navy-900 transition-colors hover:text-accent-600">
+                          {item.full_name}
+                        </Link>
                         <p className="text-xs text-graphite-500">
                           {item.league} лига · {item.birth_year ?? "год не указан"}
                         </p>

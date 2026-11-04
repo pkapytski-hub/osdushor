@@ -749,6 +749,7 @@ async function exportData(env: Env): Promise<Response> {
     "tournament_participants",
     "tournament_matches",
     "rating_history",
+    "competition_results",
     "news",
     "competitions",
     "coaches",
