@@ -15,3 +15,8 @@ SETUP_TOKEN=change-me-local-setup-token
 
 TURNSTILE_SITEKEY=
 TURNSTILE_SECRET=
+
+# Импорт календаря и архива из Notion (npm run results:import).
+# Токен: notion.so/my-integrations → Internal integration, затем расшарьте ей
+# нужные базы. Без токена импорт отвечает ошибкой, остальной сайт работает.
+NOTION_TOKEN=

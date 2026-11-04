@@ -1,0 +1,21 @@
+{
+  "name": "Сайт ОСДЮШОР",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    }
+  },
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [5173, 8787],
+  "portsAttributes": {
+    "8787": {
+      "label": "Worker API",
+      "onAutoForward": "silent"
+    },
+    "5173": {
+      "label": "Vite",
+      "onAutoForward": "openPreview"
+    }
+  }
+}
