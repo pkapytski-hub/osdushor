@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, Search, Trophy, X } from "lucide-react";
+import { ChevronDown, Download, Search, Trophy, X } from "lucide-react";
+import { toast } from "sonner";
 import { Seo } from "@/components/Seo";
 import { Field, Select } from "@/components/ui/Field";
 import { PageHero } from "@/components/site/PageHero";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/site/primitives";
 import { api } from "@/lib/api";
+import { downloadRatingExcel } from "@/lib/rating-export";
 import { useAsync } from "@/hooks/useAsync";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +16,7 @@ export default function RatingPage() {
   const [query, setQuery] = useState("");
   const [year, setYear] = useState("");
   const [gender, setGender] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(search.trim()), 300);
@@ -22,6 +25,20 @@ export default function RatingPage() {
 
   const rating = useAsync((signal) => api.public.rating({ q: query, year, gender }, signal), [query, year, gender]);
   const items = rating.data?.items ?? [];
+
+  // Выгружается то, что сейчас на экране: фильтры поиска, пола и года учитываются.
+  const handleExport = async () => {
+    if (items.length === 0 || exporting) return;
+    setExporting(true);
+    try {
+      await downloadRatingExcel(items);
+      toast.success("Рейтинг выгружен в Excel", { description: "Отдельный лист на каждую лигу." });
+    } catch {
+      toast.error("Не удалось подготовить файл", { description: "Попробуйте ещё раз или обновите страницу." });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <>
@@ -33,7 +50,7 @@ export default function RatingPage() {
       <PageHero
         label="Спортсмены"
         title="Рейтинг школы"
-        description="Рейтинг обновляется после подведения итогов турнира. В расчёт идёт каждая встреча: чем сильнее соперник, тем больше очков можно получить за победу."
+        description="Рейтинг обновляется после подведения итогов турнира. В расчёт идёт каждая встреча: чем сильнее соперник, тем больше очков можно получить за победу. В списке — только участники турниров: кто не играл больше месяца, уходит в архив и возвращается после следующего турнира."
         crumbs={[{ label: "Соревнования", to: "/turniry" }, { label: "Рейтинг" }]}
         compact
       >
@@ -45,37 +62,49 @@ export default function RatingPage() {
       <section className="section bg-white">
         <div className="container-site">
           <div className="flex flex-col gap-5 border-b border-navy-100 pb-6">
-            <form
-              className="flex max-w-xl gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setQuery(search.trim());
-              }}
-              role="search"
-            >
-              <label htmlFor="rating-search" className="sr-only">Поиск спортсмена</label>
-              <div className="relative flex-1">
-                <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-graphite-400" aria-hidden="true" />
-                <input
-                  id="rating-search"
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Фамилия или имя"
-                  className="field-input pl-10"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-graphite-400 hover:text-navy-900"
-                    onClick={() => setSearch("")}
-                    aria-label="Очистить поиск"
-                  >
-                    <X size={15} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-            </form>
+            <div className="flex flex-wrap items-center gap-3">
+              <form
+                className="flex min-w-0 flex-1 gap-2 sm:max-w-xl"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setQuery(search.trim());
+                }}
+                role="search"
+              >
+                <label htmlFor="rating-search" className="sr-only">Поиск спортсмена</label>
+                <div className="relative flex-1">
+                  <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-graphite-400" aria-hidden="true" />
+                  <input
+                    id="rating-search"
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Фамилия или имя"
+                    className="field-input pl-10"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-graphite-400 hover:text-navy-900"
+                      onClick={() => setSearch("")}
+                      aria-label="Очистить поиск"
+                    >
+                      <X size={15} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              </form>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm whitespace-nowrap disabled:opacity-60"
+                onClick={handleExport}
+                disabled={exporting || items.length === 0}
+                title="Отдельный лист на каждую лигу"
+              >
+                <Download size={15} aria-hidden="true" />
+                {exporting ? "Готовим файл…" : "Скачать Excel"}
+              </button>
+            </div>
             <div className="flex flex-wrap items-start gap-4">
               <Field label="Пол" htmlFor="rating-gender" className="w-full sm:w-52">
                 <div className="relative">

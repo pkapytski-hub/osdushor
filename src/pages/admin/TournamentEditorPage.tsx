@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, RefreshCw, Save, Shuffle, Trophy, Users } from "lucide-react";
+import { ArrowLeft, Check, Plus, RefreshCw, Save, Shuffle, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError, api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
@@ -633,12 +633,20 @@ export default function TournamentEditorPage() {
               <div>
                 <h2 className="text-lg normal-case tracking-normal">Участники</h2>
                 <p className="mt-1 text-xs text-graphite-500">
-                  Выбрано: {selected.size}. Список берётся из раздела «Спортсмены и рейтинг».
+                  Выбрано: {selected.size}. Список берётся из раздела «Спортсмены и рейтинг»; те, кто в архиве, тоже
+                  доступны — турнир возвращает их в рейтинг.
                 </p>
               </div>
-              <button type="button" className="btn btn-outline btn-sm" disabled={busy || finished} onClick={() => void saveParticipants()}>
-                <Users size={15} aria-hidden="true" /> Сохранить состав
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {!finished && (
+                  <Link to="/admin/athletes/new" className="btn btn-outline btn-sm">
+                    <Plus size={15} aria-hidden="true" /> Новый спортсмен
+                  </Link>
+                )}
+                <button type="button" className="btn btn-outline btn-sm" disabled={busy || finished} onClick={() => void saveParticipants()}>
+                  <Users size={15} aria-hidden="true" /> Сохранить состав
+                </button>
+              </div>
             </div>
             {athletes.loading && <p className="mt-4 text-sm text-graphite-500">Загрузка спортсменов…</p>}
             {athletes.error && <p className="mt-4 text-sm text-accent-700">{athletes.error}</p>}
@@ -682,6 +690,14 @@ export default function TournamentEditorPage() {
                         }}
                       />
                       <span className="min-w-0 flex-1 truncate text-graphite-800">{athlete.full_name}</span>
+                      {athlete.is_archived ? (
+                        <span
+                          className="text-[10px] uppercase tracking-[0.1em] text-amber-700"
+                          title="Не играл больше месяца: в рейтинге не показывается, но его можно добавить в любой турнир"
+                        >
+                          архив
+                        </span>
+                      ) : null}
                       {leagueOfAthlete.get(athlete.id) ? (
                         <span className="text-[10px] uppercase tracking-[0.1em] text-accent-700">
                           {leagueOfAthlete.get(athlete.id)} лига

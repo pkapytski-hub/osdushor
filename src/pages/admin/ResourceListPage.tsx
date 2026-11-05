@@ -10,6 +10,7 @@ import { AdminPageHeader, ConfirmDialog, StatusBadge } from "./admin-ui";
 import { ResourcePreview } from "./ResourcePreview";
 import { DemoBadge } from "@/components/site/primitives";
 import { formatFileSize } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type Row = Record<string, unknown>;
 
@@ -18,17 +19,22 @@ export default function ResourceListPage({ resourceKey }: { resourceKey: string 
   const { user } = useAdmin();
   const list = useAsync((signal) => api.admin.list<Row>(resourceKey, signal), [resourceKey]);
   const [search, setSearch] = useState("");
+  const [filterKey, setFilterKey] = useState("all");
   const [toDelete, setToDelete] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Row | null>(null);
 
   if (!config) return <p>Раздел не найден.</p>;
 
-  const items = (list.data?.items ?? []).filter((item) => {
-    if (!search.trim()) return true;
-    const value = Object.values(item).map(String).join(" ").toLowerCase();
-    return value.includes(search.trim().toLowerCase());
-  });
+  const allItems = list.data?.items ?? [];
+  const activeFilter = config.filters?.find((entry) => entry.key === filterKey && entry.match);
+  const items = allItems
+    .filter((item) => (activeFilter?.match ? activeFilter.match(item) : true))
+    .filter((item) => {
+      if (!search.trim()) return true;
+      const value = Object.values(item).map(String).join(" ").toLowerCase();
+      return value.includes(search.trim().toLowerCase());
+    });
 
   const confirmDelete = async () => {
     if (!toDelete) return;
@@ -63,6 +69,26 @@ export default function ResourceListPage({ resourceKey }: { resourceKey: string 
         </p>
       )}
 
+      {config.filters && config.filters.length > 0 && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Фильтр списка">
+          {config.filters.map((entry) => {
+            const count = entry.match ? allItems.filter(entry.match).length : allItems.length;
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                className={cn("chip", filterKey === entry.key && "chip-active")}
+                aria-pressed={filterKey === entry.key}
+                onClick={() => setFilterKey(entry.key)}
+              >
+                {entry.label}
+                <span className="ml-1.5 text-[11px] opacity-70">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-sm flex-1">
           <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-graphite-400" aria-hidden="true" />
@@ -94,7 +120,9 @@ export default function ResourceListPage({ resourceKey }: { resourceKey: string 
         )}
         {!list.loading && !list.error && items.length === 0 && (
           <div className="p-10 text-center">
-            <p className="font-display text-lg uppercase text-navy-900">{search ? "Ничего не найдено" : "Записей пока нет"}</p>
+            <p className="font-display text-lg uppercase text-navy-900">
+              {search ? "Ничего не найдено" : filterKey !== "all" ? "В этом списке пока пусто" : "Записей пока нет"}
+            </p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-graphite-500">
               {search ? "Измените поисковый запрос." : "Создайте первую запись — она появится в этом списке и, после публикации, на сайте."}
             </p>

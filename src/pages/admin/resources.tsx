@@ -49,6 +49,13 @@ export interface AdminColumn {
   hideOnMobile?: boolean;
 }
 
+export interface AdminFilter {
+  key: string;
+  label: string;
+  /** Фильтры без match — «Все»: показывают весь список. */
+  match?: (item: Record<string, unknown>) => boolean;
+}
+
 export interface ResourceConfig {
   key: string;
   title: string;
@@ -58,6 +65,7 @@ export interface ResourceConfig {
   columns: AdminColumn[];
   defaults: Record<string, unknown>;
   preview?: "news" | "competition";
+  filters?: AdminFilter[];
   titleField: string;
   sort?: (a: Record<string, unknown>, b: Record<string, unknown>) => number;
 }
@@ -79,7 +87,8 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     key: "athletes",
     title: "Спортсмены и рейтинг",
     singular: "спортсмена",
-    description: "Список воспитанников и их текущий рейтинг. Рейтинг пересчитывается автоматически после турниров.",
+    description:
+      "Список воспитанников и их рейтинг. В рейтинг попадают только участники турниров; кто не играл больше месяца — в архиве, его можно вернуть, добавив в состав любого турнира.",
     titleField: "full_name",
     defaults: {
       full_name: "",
@@ -88,14 +97,35 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       rating: 0,
       is_active: true,
     },
+    filters: [
+      { key: "all", label: "Все" },
+      { key: "rating", label: "В рейтинге", match: (item) => Boolean(item.is_active) && !item.is_archived },
+      { key: "archive", label: "Архив", match: (item) => Boolean(item.is_archived) },
+    ],
     columns: [
       { key: "full_name", label: "Спортсмен" },
       { key: "birth_year", label: "Год рождения" },
       { key: "rating", label: "Рейтинг", render: (item) => Number(item.rating ?? 0).toFixed(2) },
       {
+        key: "last_tournament_on",
+        label: "Последнее участие",
+        hideOnMobile: true,
+        render: (item) =>
+          item.last_tournament_on ? formatDate(String(item.last_tournament_on)) : "Не участвовал",
+      },
+      {
         key: "is_active",
-        label: "В списках",
-        render: (item) => (item.is_active ? "Да" : "Нет"),
+        label: "Статус",
+        render: (item) => {
+          if (!item.is_active) {
+            return <span className="badge border border-graphite-300 bg-mist text-graphite-500">Скрыт</span>;
+          }
+          return item.is_archived ? (
+            <span className="badge border border-amber-500/30 bg-amber-50 text-amber-800">Архив</span>
+          ) : (
+            <span className="badge border border-emerald-600/30 bg-emerald-50 text-emerald-800">В рейтинге</span>
+          );
+        },
         hideOnMobile: true,
       },
     ],

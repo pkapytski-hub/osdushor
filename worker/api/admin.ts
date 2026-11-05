@@ -310,7 +310,29 @@ function ensureValid(errors: Record<string, string>): void {
   }
 }
 
+/**
+ * Спортсмены: к карточке добавляем дату последнего турнира и признак архива.
+ * Архив — не играл ни одного турнира или последний был больше месяца назад.
+ */
+async function listAthletes(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT *,
+       CASE WHEN last_tournament_on IS NULL OR last_tournament_on < date('now', '-30 days')
+            THEN 1 ELSE 0 END AS is_archived
+     FROM (
+       SELECT a.*,
+         (SELECT MAX(t.held_on) FROM tournament_participants p
+            JOIN tournaments t ON t.id = p.tournament_id
+           WHERE p.athlete_id = a.id) AS last_tournament_on
+       FROM athletes a
+     )
+     ORDER BY rating DESC, full_name`,
+  ).all<Record<string, unknown>>();
+  return ok({ items: (results ?? []).map((row) => toBooleanRow(row)) });
+}
+
 async function listResource(env: Env, def: ResourceDef): Promise<Response> {
+  if (def.entity === "athlete") return listAthletes(env);
   const { results } = await env.DB.prepare(`SELECT * FROM ${def.table} ORDER BY ${def.order}`).all<
     Record<string, unknown>
   >();

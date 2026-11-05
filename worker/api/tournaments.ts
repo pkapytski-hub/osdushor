@@ -634,10 +634,14 @@ async function setParticipants(env: Env, user: SessionUser, id: string, request:
   return ok({ item: data ? await tournamentView(env, data) : null });
 }
 
+// В рейтинге и жеребьёвке участвуют только те, кто сыграл хотя бы один турнир:
+// новички и те, кто давно не играл, живут в архиве и в места не попадают.
+const PARTICIPATED = "EXISTS (SELECT 1 FROM tournament_participants p WHERE p.athlete_id = athletes.id)";
+
 /** Место спортсмена в общем рейтинге школы — от него зависит лига. */
 async function globalRanks(env: Env): Promise<Map<string, number>> {
   const { results } = await env.DB.prepare(
-    "SELECT id FROM athletes WHERE is_active = 1 ORDER BY rating DESC, full_name",
+    `SELECT id FROM athletes WHERE is_active = 1 AND ${PARTICIPATED} ORDER BY rating DESC, full_name`,
   ).all<{ id: string }>();
   const ranks = new Map<string, number>();
   (results ?? []).forEach((row, index) => ranks.set(row.id, index + 1));
@@ -922,7 +926,7 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
   const query = str(url.searchParams.get("q") ?? "", 120);
   const year = str(url.searchParams.get("year") ?? "", 4);
   const gender = str(url.searchParams.get("gender") ?? "", 1);
-  const where = ["is_active = 1"];
+  const where = ["is_active = 1", PARTICIPATED];
   const params: unknown[] = [];
   if (query) {
     where.push("full_name LIKE ?");
@@ -944,7 +948,7 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
     .bind(...params)
     .all<Record<string, unknown>>();
   const ages = await env.DB.prepare(
-    "SELECT DISTINCT birth_year FROM athletes WHERE is_active = 1 AND birth_year IS NOT NULL ORDER BY birth_year DESC",
+    `SELECT DISTINCT birth_year FROM athletes WHERE is_active = 1 AND ${PARTICIPATED} AND birth_year IS NOT NULL ORDER BY birth_year DESC`,
   ).all<{ birth_year: number }>();
   // Лига считается по месту во всём рейтинге школы, а не в отфильтрованном
   // списке: при фильтре по году рождения номера мест тоже сквозные.
