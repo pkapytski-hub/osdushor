@@ -252,7 +252,7 @@ export interface Athlete {
   is_active: boolean | number;
   /** Дата последнего турнира (YYYY-MM-DD); null — не участвовал ни разу. */
   last_tournament_on?: string | null;
-  /** Архив: не играл ни одного турнира или последний был больше месяца назад. */
+  /** Архив: новичок без очков, ещё не играл ни одного турнира. */
   is_archived?: boolean | number;
   created_at?: string;
   updated_at?: string;

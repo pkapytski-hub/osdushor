@@ -693,7 +693,7 @@ export default function TournamentEditorPage() {
                       {athlete.is_archived ? (
                         <span
                           className="text-[10px] uppercase tracking-[0.1em] text-amber-700"
-                          title="Не играл больше месяца: в рейтинге не показывается, но его можно добавить в любой турнир"
+                          title="Новичок без очков: в рейтинге не показывается, но его можно добавить в любой турнир"
                         >
                           архив
                         </span>

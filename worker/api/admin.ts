@@ -312,12 +312,12 @@ function ensureValid(errors: Record<string, string>): void {
 
 /**
  * Спортсмены: к карточке добавляем дату последнего турнира и признак архива.
- * Архив — не играл ни одного турнира или последний был больше месяца назад.
+ * Архив — новички без очков, которые ещё не играли ни одного турнира.
  */
 async function listAthletes(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT *,
-       CASE WHEN last_tournament_on IS NULL OR last_tournament_on < date('now', '-30 days')
+       CASE WHEN rating <= 0 AND last_tournament_on IS NULL
             THEN 1 ELSE 0 END AS is_archived
      FROM (
        SELECT a.*,
