@@ -53,7 +53,7 @@ function Hero() {
             Воспитываем
             <br />
             чемпионов.
-            <span className="relative ml-0 block text-accent-500 sm:ml-2 sm:inline">
+            <span className="relative block text-accent-500">
               Открываем возможности.
             </span>
           </h1>
