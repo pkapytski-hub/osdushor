@@ -252,16 +252,17 @@ export interface Athlete {
   is_active: boolean | number;
   /** Дата последнего турнира (YYYY-MM-DD); null — не участвовал ни разу. */
   last_tournament_on?: string | null;
-  /** Архив: новичок без очков, ещё не играл ни одного турнира. */
+  /** Архивный спортсмен: играет редко, в рейтинге не показывается и места не занимает. */
   is_archived?: boolean | number;
   created_at?: string;
   updated_at?: string;
 }
 
 export interface AthleteRating extends Athlete {
-  place: number;
-  /** Лига по месту в общем рейтинге школы: 1, 2 или 3. */
-  league: number;
+  /** Место в общем рейтинге; null — спортсмен в архиве и места не занимает. */
+  place: number | null;
+  /** Лига по месту в общем рейтинге школы: 1, 2 или 3; null — вне рейтинга. */
+  league: number | null;
 }
 
 export type TournamentFormat = "round_robin" | "groups_playoff" | "olympic";

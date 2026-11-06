@@ -88,7 +88,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     title: "Спортсмены и рейтинг",
     singular: "спортсмена",
     description:
-      "Список воспитанников и их рейтинг. В рейтинге — все, у кого есть очки за турниры; новички без очков лежат в архиве, их можно вернуть, добавив в состав любого турнира.",
+      "Спортсмены школы и их рейтинг. Отметьте галочкой «Архивный спортсмен» тех, кто играет редко: они останутся в базе и будут находиться поиском, но не будут показываться в рейтинге и занимать места в лигах.",
     titleField: "full_name",
     defaults: {
       full_name: "",
@@ -96,6 +96,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       gender: "",
       rating: 0,
       is_active: true,
+      is_archived: false,
     },
     filters: [
       { key: "all", label: "Все" },
@@ -144,6 +145,12 @@ export const RESOURCES: Record<string, ResourceConfig> = {
       },
       { name: "rating", label: "Текущий рейтинг", type: "number", hint: "Можно поправить вручную, если рейтинг уже был до сайта." },
       { name: "is_active", label: "Показывать в рейтинге и списках участников", type: "checkbox" },
+      {
+        name: "is_archived",
+        label: "Архивный спортсмен",
+        type: "checkbox",
+        hint: "Играет редко: не показывать в рейтинге и не занимать место в лиге. Найти можно поиском, в состав турнира выбирается как обычно.",
+      },
     ],
   },
   news: {

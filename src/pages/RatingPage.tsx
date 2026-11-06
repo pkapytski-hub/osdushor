@@ -11,6 +11,16 @@ import { downloadRatingExcel } from "@/lib/rating-export";
 import { useAsync } from "@/hooks/useAsync";
 import { cn } from "@/lib/utils";
 
+/** Подсветка призовых мест; у архивных спортсменов места нет (null). */
+function isTopPlace(place: number | null): boolean {
+  return typeof place === "number" && place <= 3;
+}
+
+/** У архивных спортсменов лиги нет — вместо номера показываем пояснение. */
+function leagueLabel(league: number | null): string {
+  return league ? `${league} лига` : "вне рейтинга";
+}
+
 export default function RatingPage() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
@@ -163,10 +173,10 @@ export default function RatingPage() {
                     </thead>
                     <tbody className="divide-y divide-navy-100">
                       {items.map((item) => (
-                        <tr key={item.id} className={cn("hover:bg-mist/50", item.place <= 3 && "bg-mist/40")}>
+                        <tr key={item.id} className={cn("hover:bg-mist/50", isTopPlace(item.place) && "bg-mist/40")}>
                           <td className="px-4 py-3">
                             <span className={cn("font-display text-lg", item.place === 1 ? "text-accent-600" : "text-navy-900")}>
-                              {item.place}
+                              {item.place ?? "—"}
                             </span>
                           </td>
                           <td className="px-4 py-3 font-medium text-navy-900">
@@ -174,7 +184,7 @@ export default function RatingPage() {
                               {item.full_name}
                             </Link>
                           </td>
-                          <td className="px-4 py-3 text-graphite-600">{item.league} лига</td>
+                          <td className="px-4 py-3 text-graphite-600">{leagueLabel(item.league)}</td>
                           <td className="px-4 py-3 text-graphite-600">{item.birth_year ?? "—"}</td>
                           <td className="px-4 py-3 text-right font-display text-base text-navy-900">
                             {item.rating.toFixed(2)}
@@ -187,15 +197,15 @@ export default function RatingPage() {
                 <ul className="divide-y divide-navy-100 border border-navy-100 md:hidden">
                   {items.map((item) => (
                     <li key={item.id} className="flex items-center gap-3 p-4">
-                      <span className={cn("w-8 shrink-0 font-display text-lg", item.place <= 3 ? "text-accent-600" : "text-graphite-500")}>
-                        {item.place}
+                      <span className={cn("w-8 shrink-0 font-display text-lg", isTopPlace(item.place) ? "text-accent-600" : "text-graphite-500")}>
+                        {item.place ?? "—"}
                       </span>
                       <div className="min-w-0 flex-1">
                         <Link to={`/sportsmeny/${item.id}`} className="block truncate font-medium text-navy-900 transition-colors hover:text-accent-600">
                           {item.full_name}
                         </Link>
                         <p className="text-xs text-graphite-500">
-                          {item.league} лига · {item.birth_year ?? "год не указан"}
+                          {leagueLabel(item.league)} · {item.birth_year ?? "год не указан"}
                         </p>
                       </div>
                       <span className="font-display text-base text-navy-900">{item.rating.toFixed(2)}</span>

@@ -32,6 +32,13 @@ export async function ensureSchema(env: Env): Promise<void> {
           /* колонка уже есть */
         }
       }
+      // Признак «архивный спортсмен»: редко играющие не показываются в рейтинге,
+      // но остаются доступны для поиска и для состава турнира.
+      try {
+        await env.DB.prepare("ALTER TABLE athletes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0").run();
+      } catch {
+        /* колонка уже есть */
+      }
       // Длину встречи (3, 5 или 7 партий) стали выбирать в настройках турнира.
       // Вызов встречи на стол — отметка времени, которую ставит судья.
       try {

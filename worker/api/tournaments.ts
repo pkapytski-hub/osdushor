@@ -642,11 +642,12 @@ async function setParticipants(env: Env, user: SessionUser, id: string, request:
 /**
  * В рейтинге — все действующие спортсмены школы, включая новичков без очков:
  * нулевой рейтинг не повод прятать человека из списка, он просто стоит в конце.
- * Место и лига по-прежнему считаются по рейтингу, поэтому у нулевых — 3-я лига.
+ * Архивные (редко играющие) в места не попадают: иначе они отнимают места
+ * в лигах у тех, кто соревнуется регулярно.
  */
 async function globalRanks(env: Env): Promise<Map<string, number>> {
   const { results } = await env.DB.prepare(
-    "SELECT id FROM athletes WHERE is_active = 1 ORDER BY rating DESC, full_name",
+    "SELECT id FROM athletes WHERE is_active = 1 AND is_archived = 0 ORDER BY rating DESC, full_name",
   ).all<{ id: string }>();
   const ranks = new Map<string, number>();
   (results ?? []).forEach((row, index) => ranks.set(row.id, index + 1));
@@ -969,6 +970,10 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
   if (query) {
     where.push("full_name LIKE ?");
     params.push(`%${query}%`);
+  } else {
+    // Архивных не показываем в общем списке; по поиску их найти можно — они
+    // играют редко, но остаются в базе школы.
+    where.push("is_archived = 0");
   }
   if (/^\d{4}$/.test(year)) {
     // Год рождения — это возрастная группа: выбранный год и все, кто моложе.
@@ -980,25 +985,35 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
     params.push(gender);
   }
   const { results } = await env.DB.prepare(
-    `SELECT id, full_name, birth_year, gender, rating FROM athletes
+    `SELECT id, full_name, birth_year, gender, rating, is_archived FROM athletes
      WHERE ${where.join(" AND ")} ORDER BY rating DESC, full_name LIMIT 500`,
   )
     .bind(...params)
     .all<Record<string, unknown>>();
   const ages = await env.DB.prepare(
-    `SELECT DISTINCT birth_year FROM athletes WHERE is_active = 1 AND birth_year IS NOT NULL ORDER BY birth_year DESC`,
+    `SELECT DISTINCT birth_year FROM athletes
+      WHERE is_active = 1 AND is_archived = 0 AND birth_year IS NOT NULL
+      ORDER BY birth_year DESC`,
   ).all<{ birth_year: number }>();
   // Лига считается по месту во всём рейтинге школы, а не в отфильтрованном
   // списке: при фильтре по году рождения номера мест тоже сквозные.
   const ranks = await globalRanks(env);
   return ok({
-    items: (results ?? []).map((row, index) => ({
-      ...row,
-      // Место сквозное: при фильтрах номер остаётся тем же, что в общем списке.
-      place: ranks.get(String(row.id)) ?? index + 1,
-      rating: Number(row.rating ?? 0),
-      league: leagueForRank(ranks.get(String(row.id)) ?? Number.MAX_SAFE_INTEGER),
-    })),
+    items: (results ?? []).map((row) => {
+      const rank = ranks.get(String(row.id));
+      return {
+        id: row.id,
+        full_name: row.full_name,
+        birth_year: row.birth_year,
+        gender: row.gender,
+        rating: Number(row.rating ?? 0),
+        is_archived: Number(row.is_archived ?? 0),
+        // Место сквозное: при фильтрах номер остаётся тем же, что в общем списке.
+        // У архивных места нет — они вне рейтинга и в лигах не участвуют.
+        place: rank ?? null,
+        league: rank ? leagueForRank(rank) : null,
+      };
+    }),
     years: (ages.results ?? []).map((row) => row.birth_year),
   });
 }

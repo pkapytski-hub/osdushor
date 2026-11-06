@@ -16,10 +16,11 @@ function genderLabel(value: string): string {
 function buildSheets(items: AthleteRating[]): Sheet<Blob>[] {
   const byLeague = new Map<number, AthleteRating[]>();
   for (const item of items) {
-    const league = item.league || 1;
-    const list = byLeague.get(league);
+    // Архивные спортсмены вне рейтинга и в лигах не участвуют — в выгрузку не идут.
+    if (!item.league || item.place === null) continue;
+    const list = byLeague.get(item.league);
     if (list) list.push(item);
-    else byLeague.set(league, [item]);
+    else byLeague.set(item.league, [item]);
   }
 
   return [...byLeague.entries()]
@@ -35,7 +36,7 @@ function buildSheets(items: AthleteRating[]): Sheet<Blob>[] {
           { value: "Рейтинг", ...HEADER },
         ],
         ...rows.map((row, index): Row => [
-          { value: row.place, type: Number, align: "left" },
+          { value: row.place ?? 0, type: Number, align: "left" },
           { value: index + 1, type: Number, align: "left" },
           { value: row.full_name, type: String },
           row.birth_year ? { value: row.birth_year, type: Number, align: "left" } : null,

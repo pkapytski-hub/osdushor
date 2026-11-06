@@ -50,6 +50,7 @@ const RESOURCES: Record<string, ResourceDef> = {
       gender: { kind: "text", max: 8 },
       rating: { kind: "float" },
       is_active: { kind: "bool" },
+      is_archived: { kind: "bool" },
     },
   },
   news: {
@@ -311,21 +312,16 @@ function ensureValid(errors: Record<string, string>): void {
 }
 
 /**
- * Спортсмены: к карточке добавляем дату последнего турнира и признак архива.
- * Архив — новички без очков, которые ещё не играли ни одного турнира.
+ * Спортсмены: к карточке добавляем дату последнего турнира. Признак архива
+ * хранится в самой карточке (галочка «Архивный спортсмен»), а не вычисляется.
  */
 async function listAthletes(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
-    `SELECT *,
-       CASE WHEN rating <= 0 AND last_tournament_on IS NULL
-            THEN 1 ELSE 0 END AS is_archived
-     FROM (
-       SELECT a.*,
-         (SELECT MAX(t.held_on) FROM tournament_participants p
-            JOIN tournaments t ON t.id = p.tournament_id
-           WHERE p.athlete_id = a.id) AS last_tournament_on
-       FROM athletes a
-     )
+    `SELECT a.*,
+       (SELECT MAX(t.held_on) FROM tournament_participants p
+          JOIN tournaments t ON t.id = p.tournament_id
+         WHERE p.athlete_id = a.id) AS last_tournament_on
+     FROM athletes a
      ORDER BY rating DESC, full_name`,
   ).all<Record<string, unknown>>();
   return ok({ items: (results ?? []).map((row) => toBooleanRow(row)) });

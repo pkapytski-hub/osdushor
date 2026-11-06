@@ -230,6 +230,9 @@ CREATE TABLE IF NOT EXISTS athletes (
   gender TEXT NOT NULL DEFAULT '',
   rating REAL NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
+  -- Архивный спортсмен играет редко: в рейтинге не показывается и места в лигах
+  -- не занимает, но остаётся в базе — его можно найти по фамилии и включить в турнир.
+  is_archived INTEGER NOT NULL DEFAULT 0,
   -- Внешний идентификатор страницы Notion: по нему импорт обновляет запись,
   -- а не создаёт дубль. Остальные поля — карточка из базы «Спортсмены».
   notion_id TEXT,
