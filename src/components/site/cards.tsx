@@ -48,7 +48,7 @@ export function NewsCard({
           </div>
         </SmartImage>
       </Link>
-      <div className={cn("flex flex-1 flex-col p-5 sm:p-6", horizontal && "sm:p-7")}>
+      <div className={cn("flex min-w-0 flex-1 flex-col p-5 sm:p-6", horizontal && "sm:p-7")}>
         <div className="flex items-center gap-3 text-[12px] uppercase tracking-[0.12em] text-graphite-500">
           <time dateTime={item.published_at}>{formatDate(item.published_at)}</time>
         </div>

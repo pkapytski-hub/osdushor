@@ -20,7 +20,7 @@ export function Logo({ onClick }: { onClick?: () => void }) {
         <span className="font-display text-[17px] font-semibold uppercase leading-none tracking-[0.03em] text-navy-900">
           ОСДЮШОР
         </span>
-        <span className="mt-1 text-[9.5px] font-medium uppercase leading-tight tracking-[0.18em] text-graphite-500">
+        <span className="mt-1 hidden text-[9.5px] font-medium uppercase leading-tight tracking-[0.18em] text-graphite-500 min-[360px]:block">
           Гродно · Настольный теннис
         </span>
       </span>

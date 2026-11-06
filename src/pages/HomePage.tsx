@@ -289,7 +289,7 @@ function NewsSection() {
               <Reveal>
                 <NewsCard item={news.data.items[0]} featured />
               </Reveal>
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="grid gap-6">
                 {news.data.items.slice(1, 3).map((item, index) => (
                   <Reveal key={item.id} delay={100 + index * 80}>
                     <NewsCard item={item} horizontal />

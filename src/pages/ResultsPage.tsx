@@ -76,7 +76,7 @@ export default function ResultsPage() {
             <div className="space-y-12">
               {[...groups.entries()].map(([year, yearItems]) => (
                 <section key={year}>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <h2 className="font-display text-3xl text-navy-900">{year}</h2>
                     <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
                     <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
@@ -129,7 +129,7 @@ export default function ResultsPage() {
           {archive.loading && items.length > 0 && <LoadingBlock rows={2} />}
           {archiveItems.length > 0 && (
             <div className="mt-16">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <h2 className="font-display text-3xl text-navy-900">Архив выступлений</h2>
                 <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
                 <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
@@ -184,7 +184,7 @@ export default function ResultsPage() {
                     </div>
                     <p className="mt-1.5 text-sm leading-relaxed text-graphite-700">
                       {item.results.map((row, index) => (
-                        <span key={row.id} className="whitespace-nowrap">
+                        <span key={row.id} className="inline-block whitespace-nowrap">
                           {index > 0 && (
                             <span className="px-1.5 text-navy-200" aria-hidden="true">
                               ·
