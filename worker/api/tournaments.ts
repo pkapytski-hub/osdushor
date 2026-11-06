@@ -936,14 +936,17 @@ async function reopenTournament(env: Env, user: SessionUser, id: string): Promis
   const data = await loadTournament(env, id);
   if (!data) return fail(404, "not_found", "Турнир не найден.");
   if (!data.tournament.is_finished) return fail(400, "not_finished", "Итоги ещё не подведены.");
+  // Откат возвращает точное значение «до турнира»: в истории лежит округлённая
+  // сумма, и вычитание её из рейтинга оставляло бы дробный остаток (616,91 → 617).
   const { results } = await env.DB.prepare(
-    "SELECT athlete_id, delta FROM rating_history WHERE tournament_id = ?",
+    `SELECT athlete_id, rating_before, rating_after FROM tournament_participants
+      WHERE tournament_id = ? AND rating_after IS NOT NULL`,
   )
     .bind(id)
-    .all<{ athlete_id: string; delta: number }>();
+    .all<{ athlete_id: string; rating_before: number; rating_after: number }>();
   const statements = (results ?? []).map((row) =>
-    env.DB.prepare("UPDATE athletes SET rating = ROUND(rating - ?), updated_at = datetime('now') WHERE id = ?").bind(
-      Number(row.delta),
+    env.DB.prepare("UPDATE athletes SET rating = ROUND(rating - ?, 2), updated_at = datetime('now') WHERE id = ?").bind(
+      Number(row.rating_after) - Number(row.rating_before),
       row.athlete_id,
     ),
   );
