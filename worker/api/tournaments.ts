@@ -942,7 +942,7 @@ async function reopenTournament(env: Env, user: SessionUser, id: string): Promis
     .bind(id)
     .all<{ athlete_id: string; delta: number }>();
   const statements = (results ?? []).map((row) =>
-    env.DB.prepare("UPDATE athletes SET rating = ROUND(rating - ?, 2), updated_at = datetime('now') WHERE id = ?").bind(
+    env.DB.prepare("UPDATE athletes SET rating = ROUND(rating - ?), updated_at = datetime('now') WHERE id = ?").bind(
       Number(row.delta),
       row.athlete_id,
     ),
@@ -961,16 +961,22 @@ async function reopenTournament(env: Env, user: SessionUser, id: string): Promis
   return ok({ item: updated ? await tournamentView(env, updated) : null });
 }
 
+/** Приводит имя к виду для поиска: нижний регистр, ё = е, один пробел. */
+function normalizeName(value: unknown): string {
+  return String(value ?? "")
+    .toLocaleLowerCase("ru")
+    .replace(/ё/g, "е")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function listRating(env: Env, url: URL): Promise<Response> {
   const query = str(url.searchParams.get("q") ?? "", 120);
   const year = str(url.searchParams.get("year") ?? "", 4);
   const gender = str(url.searchParams.get("gender") ?? "", 1);
   const where = ["is_active = 1"];
   const params: unknown[] = [];
-  if (query) {
-    where.push("full_name LIKE ?");
-    params.push(`%${query}%`);
-  } else {
+  if (!query) {
     // Архивных не показываем в общем списке; по поиску их найти можно — они
     // играют редко, но остаются в базе школы.
     where.push("is_archived = 0");
@@ -986,10 +992,17 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
   }
   const { results } = await env.DB.prepare(
     `SELECT id, full_name, birth_year, gender, rating, is_archived FROM athletes
-     WHERE ${where.join(" AND ")} ORDER BY rating DESC, full_name LIMIT 500`,
+     WHERE ${where.join(" AND ")} ORDER BY rating DESC, full_name`,
   )
     .bind(...params)
     .all<Record<string, unknown>>();
+  // Поиск по имени сравниваем в JS: LIKE в SQLite не знает регистра кириллицы,
+  // поэтому «кот» не находил «Кот Вера». Заодно считаем ё и е одной буквой.
+  const needle = normalizeName(query);
+  const matched = needle
+    ? (results ?? []).filter((row) => normalizeName(row.full_name).includes(needle))
+    : (results ?? []);
+  const visible = matched.slice(0, 500);
   const ages = await env.DB.prepare(
     `SELECT DISTINCT birth_year FROM athletes
       WHERE is_active = 1 AND is_archived = 0 AND birth_year IS NOT NULL
@@ -999,7 +1012,7 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
   // списке: при фильтре по году рождения номера мест тоже сквозные.
   const ranks = await globalRanks(env);
   return ok({
-    items: (results ?? []).map((row) => {
+    items: visible.map((row) => {
       const rank = ranks.get(String(row.id));
       return {
         id: row.id,
