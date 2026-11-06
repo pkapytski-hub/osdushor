@@ -639,16 +639,14 @@ async function setParticipants(env: Env, user: SessionUser, id: string, request:
   return ok({ item: data ? await tournamentView(env, data) : null });
 }
 
-// В рейтинге — все, у кого есть очки за турниры, и все участники турниров:
-// так список совпадает с таблицей рейтинга школы. Новички без очков, которые
-// ещё ни разу не играли, живут в архиве и в места не попадают.
-const IN_RATING =
-  "(rating > 0 OR EXISTS (SELECT 1 FROM tournament_participants p WHERE p.athlete_id = athletes.id))";
-
-/** Место спортсмена в общем рейтинге школы — от него зависит лига. */
+/**
+ * В рейтинге — все действующие спортсмены школы, включая новичков без очков:
+ * нулевой рейтинг не повод прятать человека из списка, он просто стоит в конце.
+ * Место и лига по-прежнему считаются по рейтингу, поэтому у нулевых — 3-я лига.
+ */
 async function globalRanks(env: Env): Promise<Map<string, number>> {
   const { results } = await env.DB.prepare(
-    `SELECT id FROM athletes WHERE is_active = 1 AND ${IN_RATING} ORDER BY rating DESC, full_name`,
+    "SELECT id FROM athletes WHERE is_active = 1 ORDER BY rating DESC, full_name",
   ).all<{ id: string }>();
   const ranks = new Map<string, number>();
   (results ?? []).forEach((row, index) => ranks.set(row.id, index + 1));
@@ -966,7 +964,7 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
   const query = str(url.searchParams.get("q") ?? "", 120);
   const year = str(url.searchParams.get("year") ?? "", 4);
   const gender = str(url.searchParams.get("gender") ?? "", 1);
-  const where = ["is_active = 1", IN_RATING];
+  const where = ["is_active = 1"];
   const params: unknown[] = [];
   if (query) {
     where.push("full_name LIKE ?");
@@ -988,7 +986,7 @@ export async function listRating(env: Env, url: URL): Promise<Response> {
     .bind(...params)
     .all<Record<string, unknown>>();
   const ages = await env.DB.prepare(
-    `SELECT DISTINCT birth_year FROM athletes WHERE is_active = 1 AND ${IN_RATING} AND birth_year IS NOT NULL ORDER BY birth_year DESC`,
+    `SELECT DISTINCT birth_year FROM athletes WHERE is_active = 1 AND birth_year IS NOT NULL ORDER BY birth_year DESC`,
   ).all<{ birth_year: number }>();
   // Лига считается по месту во всём рейтинге школы, а не в отфильтрованном
   // списке: при фильтре по году рождения номера мест тоже сквозные.
