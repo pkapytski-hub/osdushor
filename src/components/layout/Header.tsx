@@ -40,11 +40,11 @@ const NAV: NavItem[] = [
     ],
   },
   { label: "Новости", to: "/novosti" },
+  { label: "Рейтинг", to: "/reyting" },
   {
     label: "Соревнования",
     children: [
       { label: "Турниры школы", to: "/turniry", description: "Сетки, группы и итоги" },
-      { label: "Рейтинг", to: "/reyting", description: "Текущий рейтинг спортсменов" },
       { label: "Календарь", to: "/kalendar", description: "Турниры и положения" },
       { label: "Результаты", to: "/rezultaty", description: "Итоги соревнований" },
     ],

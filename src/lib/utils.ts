@@ -16,6 +16,11 @@ export function setting(
   return value || fallback;
 }
 
+/** Рейтинг школы — только целые числа: 616.91 → "617". */
+export function formatRating(value: number | null | undefined): string {
+  return String(Math.round(Number(value ?? 0)));
+}
+
 export function hasSetting(settings: Record<string, string> | null | undefined, key: string): boolean {
   return Boolean(settings?.[key]?.trim());
 }

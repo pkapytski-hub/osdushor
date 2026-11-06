@@ -11,6 +11,7 @@ import {
   newsCategoryLabel,
 } from "@/lib/types";
 import { nowDateTimeInput } from "@/lib/format";
+import { formatRating } from "@/lib/utils";
 
 export type AdminFieldType =
   | "text"
@@ -106,7 +107,7 @@ export const RESOURCES: Record<string, ResourceConfig> = {
     columns: [
       { key: "full_name", label: "Спортсмен" },
       { key: "birth_year", label: "Год рождения" },
-      { key: "rating", label: "Рейтинг", render: (item) => Number(item.rating ?? 0).toFixed(2) },
+      { key: "rating", label: "Рейтинг", render: (item) => formatRating(item.rating as number | null) },
       {
         key: "last_tournament_on",
         label: "Последнее участие",

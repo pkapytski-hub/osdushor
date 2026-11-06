@@ -41,7 +41,7 @@ function buildSheets(items: AthleteRating[]): Sheet<Blob>[] {
           { value: row.full_name, type: String },
           row.birth_year ? { value: row.birth_year, type: Number, align: "left" } : null,
           { value: genderLabel(row.gender), type: String },
-          { value: Math.round(row.rating * 100) / 100, type: Number, format: "0.00" },
+          { value: Math.round(row.rating), type: Number, format: "0" },
         ]),
       ];
 

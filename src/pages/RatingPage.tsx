@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, LoadingBlock } from "@/components/site/primitiv
 import { api } from "@/lib/api";
 import { downloadRatingExcel } from "@/lib/rating-export";
 import { useAsync } from "@/hooks/useAsync";
-import { cn } from "@/lib/utils";
+import { cn, formatRating } from "@/lib/utils";
 
 /** Подсветка призовых мест; у архивных спортсменов места нет (null). */
 function isTopPlace(place: number | null): boolean {
@@ -187,7 +187,7 @@ export default function RatingPage() {
                           <td className="px-4 py-3 text-graphite-600">{leagueLabel(item.league)}</td>
                           <td className="px-4 py-3 text-graphite-600">{item.birth_year ?? "—"}</td>
                           <td className="px-4 py-3 text-right font-display text-base text-navy-900">
-                            {item.rating.toFixed(2)}
+                            {formatRating(item.rating)}
                           </td>
                         </tr>
                       ))}
@@ -208,7 +208,7 @@ export default function RatingPage() {
                           {leagueLabel(item.league)} · {item.birth_year ?? "год не указан"}
                         </p>
                       </div>
-                      <span className="font-display text-base text-navy-900">{item.rating.toFixed(2)}</span>
+                      <span className="font-display text-base text-navy-900">{formatRating(item.rating)}</span>
                     </li>
                   ))}
                 </ul>

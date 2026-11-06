@@ -16,7 +16,7 @@ import {
   type TournamentMatch,
   type TournamentStanding,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, formatRating } from "@/lib/utils";
 // Считаем таблицу тем же кодом, что и сервер: предпросмотр не расходится с итогами.
 import { standings as computeStandings, type MatchInput } from "../../../worker/lib/tournament";
 
@@ -728,7 +728,7 @@ export default function TournamentEditorPage() {
                         </span>
                       ) : null}
                       <span className="text-xs text-graphite-500">{athlete.birth_year ?? "—"}</span>
-                      <span className="w-16 text-right font-display text-navy-900">{Number(athlete.rating).toFixed(1)}</span>
+                      <span className="w-16 text-right font-display text-navy-900">{formatRating(athlete.rating)}</span>
                     </label>
                   ))}
                 </div>
@@ -946,11 +946,11 @@ export default function TournamentEditorPage() {
                           <td className="px-3 py-2 font-display">{participant.place ?? "—"}</td>
                           <td className="px-3 py-2 text-graphite-600">{participant.league ? `${participant.league} лига` : "—"}</td>
                           <td className="px-3 py-2 font-medium text-navy-900">{participant.full_name}</td>
-                          <td className="px-3 py-2 text-right text-graphite-600">{participant.rating_before.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-right font-display">{participant.rating_after?.toFixed(2) ?? "—"}</td>
+                          <td className="px-3 py-2 text-right text-graphite-600">{formatRating(participant.rating_before)}</td>
+                          <td className="px-3 py-2 text-right font-display">{participant.rating_after === null || participant.rating_after === undefined ? "—" : formatRating(participant.rating_after)}</td>
                           <td className={cn("px-3 py-2 text-right font-medium", delta > 0 ? "text-emerald-700" : delta < 0 ? "text-accent-700" : "text-graphite-500")}>
                             {delta > 0 ? "+" : ""}
-                            {delta.toFixed(2)}
+                            {formatRating(delta)}
                           </td>
                         </tr>
                       );

@@ -8,7 +8,7 @@ import { BracketView } from "@/components/BracketView";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { formatDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { cn, formatRating } from "@/lib/utils";
 import type { TournamentMatch } from "@/lib/types";
 
 function scoreText(match: TournamentMatch): string {
@@ -167,11 +167,11 @@ export default function TournamentDetailPage() {
                 </div>
               </div>
               <p className="text-sm text-graphite-600">
-                Рейтинг: {item.champion.rating_after?.toFixed(2) ?? item.champion.rating_before.toFixed(2)}
+                Рейтинг: {formatRating(item.champion.rating_after ?? item.champion.rating_before)}
                 {item.champion.rating_after !== null && item.champion.rating_after !== undefined && (
                   <span className={cn("ml-2", item.champion.rating_after >= item.champion.rating_before ? "text-emerald-700" : "text-accent-700")}>
                     {item.champion.rating_after >= item.champion.rating_before ? "+" : ""}
-                    {(item.champion.rating_after - item.champion.rating_before).toFixed(2)}
+                    {formatRating(item.champion.rating_after - item.champion.rating_before)}
                   </span>
                 )}
               </p>
@@ -268,13 +268,15 @@ export default function TournamentDetailPage() {
                           <td className="px-4 py-3 text-graphite-600">
                             {participant.league ? `${participant.league} лига` : "—"}
                           </td>
-                          <td className="px-4 py-3 text-right text-graphite-600">{participant.rating_before.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right text-graphite-600">{formatRating(participant.rating_before)}</td>
                           <td className="px-4 py-3 text-right font-display text-navy-900">
-                            {participant.rating_after?.toFixed(2) ?? "—"}
+                            {participant.rating_after === null || participant.rating_after === undefined
+                              ? "—"
+                              : formatRating(participant.rating_after)}
                           </td>
                           <td className={cn("px-4 py-3 text-right font-medium", delta > 0 ? "text-emerald-700" : delta < 0 ? "text-accent-700" : "text-graphite-500")}>
                             {delta > 0 ? "+" : ""}
-                            {delta.toFixed(2)}
+                            {formatRating(delta)}
                           </td>
                         </tr>
                       );
@@ -299,7 +301,7 @@ export default function TournamentDetailPage() {
                         <td className="px-4 py-2.5 font-medium text-navy-900">{participant.full_name}</td>
                         <td className="px-4 py-2.5 text-graphite-600">{participant.birth_year ?? "—"}</td>
                         <td className="px-4 py-2.5 text-right font-display text-navy-900">
-                          {participant.rating_before.toFixed(2)}
+                          {formatRating(participant.rating_before)}
                         </td>
                       </tr>
                     ))}

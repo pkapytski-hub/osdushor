@@ -142,12 +142,9 @@ export function roundTo(value: number, digits: number): number {
   return (value < 0 ? -rounded : rounded) / factor;
 }
 
-export function round2(value: number): number {
-  return roundTo(value, 2);
-}
-
-export function round1(value: number): number {
-  return roundTo(value, 1);
+/** Рейтинг школы считается только целыми числами: сотые не показываем и не храним. */
+export function round0(value: number): number {
+  return roundTo(value, 0);
 }
 
 /**
@@ -161,14 +158,14 @@ export function ratingDiff(winnerRating: number, loserRating: number): number {
 export function winnerDelta(winnerRating: number, loserRating: number, coefficient: number): number {
   const diff = ratingDiff(winnerRating, loserRating);
   if (diff >= 100) return 0;
-  return round2(((100 - diff) / 10) * coefficient);
+  return round0(((100 - diff) / 10) * coefficient);
 }
 
 /** Проигравший теряет вдвое меньше, чем получает победитель. */
 export function loserDelta(winnerRating: number, loserRating: number, coefficient: number): number {
   const diff = ratingDiff(winnerRating, loserRating);
   if (diff >= 100) return 0;
-  return round2(-((100 - diff) / 20) * coefficient);
+  return round0(-((100 - diff) / 20) * coefficient);
 }
 
 export function hasScore(match: MatchInput): boolean {
@@ -833,9 +830,9 @@ export function planFinalize(
   const ratingAfter = new Map<string, number>();
   for (const participant of participants) {
     const start = participant.rating_before;
-    const total = round1(accumulated.get(participant.athlete_id) ?? 0);
+    const total = round0(accumulated.get(participant.athlete_id) ?? 0);
     totals.set(participant.athlete_id, total);
-    ratingAfter.set(participant.athlete_id, round2(start + total));
+    ratingAfter.set(participant.athlete_id, round0(start + total));
   }
   const places = computePlaces(participants, matches, format);
   return { totals, matchDeltas, ratingAfter, places };

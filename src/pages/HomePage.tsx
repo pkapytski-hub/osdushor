@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -6,6 +7,7 @@ import {
   ChevronRight,
   MapPin,
   MoveUpRight,
+  Search,
   Trophy,
   Users,
 } from "lucide-react";
@@ -13,7 +15,7 @@ import { Seo } from "@/components/Seo";
 import { useSiteSettings } from "@/lib/site-context";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
-import { setting, hasSetting } from "@/lib/utils";
+import { setting, hasSetting, cn, formatRating } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingBlock, Reveal, SectionHeading } from "@/components/site/primitives";
 import { NewsCard, CompetitionCard, CoachCard, AchievementCard } from "@/components/site/cards";
 import { SmartImage } from "@/components/site/Media";
@@ -342,6 +344,222 @@ function CalendarSection() {
   );
 }
 
+/** Русские формы числа: 1 спортсмен, 2 спортсмена, 5 спортсменов. */
+function plural(count: number, forms: [string, string, string]): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  if (mod100 >= 11 && mod100 <= 14) return forms[2];
+  if (mod10 === 1) return forms[0];
+  if (mod10 >= 2 && mod10 <= 4) return forms[1];
+  return forms[2];
+}
+
+/** У архивных спортсменов лиги нет — вместо номера пояснение. */
+function leagueText(league: number | null): string {
+  return league ? `${league} лига` : "вне рейтинга";
+}
+
+function RatingSection() {
+  const rating = useAsync((signal) => api.public.rating({}, signal), []);
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQuery(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  // Ищем только когда есть что искать: одна буква даёт полтаблицы.
+  const lookup = useAsync(
+    (signal) => api.public.rating({ q: query }, signal),
+    [query],
+    query.length >= 2,
+  );
+
+  const items = rating.data?.items ?? [];
+  const top = items.slice(0, 5);
+  const leagues = new Set(items.map((item) => item.league).filter((value) => value !== null));
+  const found = (lookup.data?.items ?? []).slice(0, 3);
+
+  return (
+    <section className="section bg-mist">
+      <div className="container-site">
+        <SectionHeading
+          label="Рейтинг школы"
+          title="Место в таблице меняет каждая встреча"
+          text="Рейтинг пересчитывается после итогов турнира: победа над сильным соперником даёт больше очков, чем над равным. По месту в таблице спортсмены делятся на три лиги."
+        />
+        <div className="mt-10 grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start lg:gap-14">
+          <Reveal>
+            {rating.loading && !rating.data && (
+              <p className="py-8 text-sm text-graphite-600">Загружаем таблицу…</p>
+            )}
+            {rating.error && <ErrorState message={rating.error} onRetry={rating.reload} />}
+            {!rating.loading && !rating.error && items.length === 0 && (
+              <EmptyState
+                title="Таблица заполняется"
+                text="Рейтинг появится после первого турнира сезона."
+                action={
+                  <Link to="/nabor" className="btn btn-outline btn-sm">
+                    Набор в школу
+                  </Link>
+                }
+              />
+            )}
+            {top.length > 0 && (
+              <>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="font-display text-[12px] uppercase tracking-[0.18em] text-graphite-700">
+                    Первая пятёрка сейчас
+                  </p>
+                  <p className="text-xs text-graphite-600">после последнего турнира</p>
+                </div>
+                <ol className="mt-4 divide-y divide-navy-100 border-y border-navy-200">
+                  {top.map((item) => (
+                    <li
+                      key={item.id}
+                      className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-x-4 py-3.5 sm:grid-cols-[3rem_1fr_auto]"
+                    >
+                      <span
+                        className={cn(
+                          "font-display text-[26px] leading-none tabular-nums",
+                          item.place === 1 ? "text-accent-600" : "text-navy-900",
+                        )}
+                      >
+                        {item.place ?? "—"}
+                      </span>
+                      <div className="min-w-0">
+                        <Link
+                          to={`/sportsmeny/${item.id}`}
+                          className="block truncate font-medium text-navy-900 transition-colors hover:text-accent-700"
+                        >
+                          {item.full_name}
+                        </Link>
+                        <p className="mt-0.5 text-xs text-graphite-600">
+                          {leagueText(item.league)} · {item.birth_year ?? "год не указан"}
+                        </p>
+                      </div>
+                      <span className="font-display text-lg tabular-nums text-navy-900">
+                        {formatRating(item.rating)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-4 text-sm leading-relaxed text-graphite-600">
+                  Лига зависит от места: 1 лига — места 1–50, 2 лига — 51–70, 3 лига — с 71-го. Лига определяет
+                  только время игры в субботу, на жеребьёвку она не влияет.
+                </p>
+              </>
+            )}
+          </Reveal>
+
+          <Reveal delay={100}>
+            <div className="border border-navy-200 bg-white p-5 sm:p-6">
+              <p className="font-display text-[12px] uppercase tracking-[0.18em] text-navy-900">
+                Найти себя в таблице
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed text-graphite-600">
+                Введите фамилию — покажем место, лигу и текущий рейтинг.
+              </p>
+              <form
+                role="search"
+                className="mt-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setQuery(search.trim());
+                }}
+              >
+                <label htmlFor="home-rating-search" className="sr-only">
+                  Поиск спортсмена в рейтинге школы
+                </label>
+                <div className="relative">
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-graphite-600"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="home-rating-search"
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Фамилия или имя"
+                    autoComplete="off"
+                    className="field-input pl-10"
+                  />
+                </div>
+              </form>
+
+              <div className="mt-4 min-h-[72px]" aria-live="polite">
+                {query.length < 2 && (
+                  <p className="text-sm leading-relaxed text-graphite-600">
+                    Например, «Кот» или «Ленец». Поиск идёт по фамилии и имени.
+                  </p>
+                )}
+                {query.length >= 2 && lookup.loading && (
+                  <p className="text-sm text-graphite-600">Ищем в таблице…</p>
+                )}
+                {query.length >= 2 && !lookup.loading && found.length === 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-navy-900">Такой фамилии в таблице нет.</p>
+                    <p className="mt-1 text-sm leading-relaxed text-graphite-600">
+                      Возможно, спортсмен ещё не играл турниров или перенесён в архив.
+                    </p>
+                    <Link
+                      to="/obratnaya-svyaz"
+                      className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-accent-700 underline underline-offset-4"
+                    >
+                      Спросить школу <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                  </div>
+                )}
+                {found.length > 0 && (
+                  <ul className="space-y-2">
+                    {found.map((item) => (
+                      <li key={item.id}>
+                        <Link
+                          to={`/sportsmeny/${item.id}`}
+                          className="flex items-center justify-between gap-3 border border-navy-100 bg-mist/60 px-3 py-2.5 transition-colors hover:border-navy-300 hover:bg-mist"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-navy-900">
+                              {item.full_name}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-graphite-600">
+                              {item.place ? `${item.place} место` : "места не занимает"} · {leagueText(item.league)}
+                            </span>
+                          </span>
+                          <span className="font-display text-base tabular-nums text-navy-900">
+                            {formatRating(item.rating)}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-navy-100 pt-4 text-xs text-graphite-600">
+                <span>
+                  {items.length > 0
+                    ? `${items.length} ${plural(items.length, ["спортсмен", "спортсмена", "спортсменов"])} · ${leagues.size} ${plural(leagues.size, ["лига", "лиги", "лиг"])}`
+                    : "Таблица формируется"}
+                </span>
+                <Link
+                  to="/reyting"
+                  className="inline-flex items-center gap-1 font-medium text-navy-900 transition-colors hover:text-accent-700"
+                >
+                  Вся таблица <ArrowRight size={13} aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AchievementsSection() {
   const achievements = useAsync((signal) => api.public.achievements({}, signal), []);
   const levels = [
@@ -594,6 +812,7 @@ export default function HomePage() {
       <EnrollmentSection />
       <NewsSection />
       <CalendarSection />
+      <RatingSection />
       <AchievementsSection />
       <CoachesSection />
       <LocationsSection />

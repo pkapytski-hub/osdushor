@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn, formatRating } from "@/lib/utils";
 import type { TournamentMatch, TournamentStanding } from "@/lib/types";
 
 export interface CrossTableProps {
@@ -127,7 +127,7 @@ export function CrossTable({
                 </td>
                 {showRating && (
                   <td className="border border-graphite-500 px-1 py-1 text-center font-display text-[12px] text-graphite-600 whitespace-nowrap tabular-nums">
-                    {Number(row.rating_before ?? 0).toFixed(2)}
+                    {formatRating(row.rating_before)}
                   </td>
                 )}
 
