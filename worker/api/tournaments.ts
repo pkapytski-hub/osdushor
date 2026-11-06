@@ -81,6 +81,7 @@ function mapMatch(row: Record<string, unknown>): MatchInput & {
   winner_id: string | null;
   delta_a: number | null;
   delta_b: number | null;
+  called_at: string | null;
 } {
   return {
     id: String(row.id),
@@ -101,6 +102,7 @@ function mapMatch(row: Record<string, unknown>): MatchInput & {
     winner_id: row.winner_id == null ? null : String(row.winner_id),
     delta_a: row.delta_a == null ? null : Number(row.delta_a),
     delta_b: row.delta_b == null ? null : Number(row.delta_b),
+    called_at: row.called_at == null ? null : String(row.called_at),
   };
 }
 
@@ -461,6 +463,9 @@ export async function handleTournamentsAdmin(
   if (action === "matches" && rest[2] && (method === "PATCH" || method === "PUT")) {
     return updateMatch(env, user, id, rest[2], request);
   }
+  if (action === "matches" && rest[2] && rest[3] === "call" && method === "POST") {
+    return callMatch(env, user, id, rest[2], request);
+  }
   return fail(404, "not_found", "Действие турнира не найдено.");
 }
 
@@ -787,6 +792,39 @@ async function updateMatch(
   }
   await saveScores(env, id, matchId, scoreA, scoreB, tournament.format, techLossA, techLossB);
   await audit(env, user, "update", "tournament_match", matchId, `${scoreA ?? "—"}:${scoreB ?? "—"}`);
+  const updated = await loadTournament(env, id);
+  return ok({ item: updated ? await tournamentView(env, updated) : null });
+}
+
+/**
+ * Вызов встречи на стол: судья отмечает пару, которую приглашают играть.
+ * Отметка нужна организаторам: видно, какие встречи уже вызваны, а какие
+ * ждут очереди. Снять вызов можно в любой момент.
+ */
+async function callMatch(
+  env: Env,
+  user: SessionUser,
+  id: string,
+  matchId: string,
+  request: Request,
+): Promise<Response> {
+  const existing = await env.DB.prepare("SELECT is_finished FROM tournaments WHERE id = ?")
+    .bind(id)
+    .first<{ is_finished: number }>();
+  if (!existing) return fail(404, "not_found", "Турнир не найден.");
+  if (existing.is_finished) {
+    return fail(409, "tournament_finished", "Итоги турнира уже подведены. Сначала отмените итоги.");
+  }
+  const target = await env.DB.prepare("SELECT id FROM tournament_matches WHERE id = ? AND tournament_id = ?")
+    .bind(matchId, id)
+    .first();
+  if (!target) return fail(404, "not_found", "Встреча не найдена.");
+  const body = await readJson(request);
+  const called = body.called !== false;
+  await env.DB.prepare("UPDATE tournament_matches SET called_at = ? WHERE id = ? AND tournament_id = ?")
+    .bind(called ? new Date().toISOString() : null, matchId, id)
+    .run();
+  await audit(env, user, "update", "tournament_match", matchId, called ? "вызов на стол" : "вызов снят");
   const updated = await loadTournament(env, id);
   return ok({ item: updated ? await tournamentView(env, updated) : null });
 }

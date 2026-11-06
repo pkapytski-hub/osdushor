@@ -6,6 +6,14 @@ export interface CrossTableProps {
   standings: TournamentStanding[];
   matches: TournamentMatch[];
   className?: string;
+  /** Рейтинг спортсмена отдельной колонкой сразу после фамилии. */
+  showRating?: boolean;
+  /**
+   * Колонка «Соотн» с соотношением выигранных и проигранных партий. Значение
+   * стоит только у участников, у которых одинаковое количество очков набрали
+   * трое и более: при равных очках двух человек место решает личная встреча.
+   */
+  showSetsRatio?: boolean;
 }
 
 /** Очки в круговой системе: победа — 2, поражение — 1, техническое поражение — 0. */
@@ -22,9 +30,26 @@ const BLUE = "text-blue-700";
  * В ячейке сверху очки за встречу (2 — победа, 1 — поражение, 0 — техническое
  * поражение), снизу счёт по сетам. Справа — сумма очков и место в группе.
  */
-export function CrossTable({ title, standings, matches, className }: CrossTableProps) {
+export function CrossTable({
+  title,
+  standings,
+  matches,
+  className,
+  showRating = false,
+  showSetsRatio = false,
+}: CrossTableProps) {
   // Порядок строк и столбцов строго по посевному номеру (№1..N), как в протоколе
   const ordered = [...standings].sort((a, b) => (a.seed || 999) - (b.seed || 999));
+
+  // Сколько участников набрали одинаковое количество очков: соотношение партий
+  // показываем только там, где таких участников трое и больше.
+  // Участники без сыгранных встреч — не равные очки, а пустая строка: их не считаем.
+  const pointsCount = new Map<number, number>();
+  for (const row of ordered) {
+    if (!row.played) continue;
+    const points = typeof row.points === "number" ? row.points : row.wins * WIN_POINTS + row.losses * LOSS_POINTS;
+    pointsCount.set(points, (pointsCount.get(points) ?? 0) + 1);
+  }
 
   const matchMap = new Map<string, TournamentMatch>();
   for (const m of matches) {
@@ -61,6 +86,11 @@ export function CrossTable({ title, standings, matches, className }: CrossTableP
             <th scope="col" className="w-48 border border-graphite-500 px-2 py-1.5 text-left font-display text-[12px] font-bold text-graphite-900">
               участник
             </th>
+            {showRating && (
+              <th scope="col" className="w-16 border border-graphite-500 px-1 py-1.5 text-center font-display text-[12px] font-bold text-graphite-900">
+                Рейтинг
+              </th>
+            )}
             {ordered.map((player, index) => (
               <th
                 key={player.athlete_id}
@@ -73,6 +103,11 @@ export function CrossTable({ title, standings, matches, className }: CrossTableP
             <th scope="col" className="w-14 border border-graphite-500 px-1 py-1.5 font-display text-[12px] font-bold text-graphite-900">
               Очки
             </th>
+            {showSetsRatio && (
+              <th scope="col" className="w-16 border border-graphite-500 px-1 py-1.5 font-display text-[12px] font-bold text-graphite-900" title="Соотношение партий: только при равенстве очков у трёх и более участников">
+                Соотн
+              </th>
+            )}
             <th scope="col" className="w-14 border border-graphite-500 px-1 py-1.5 font-display text-[12px] font-bold text-graphite-900">
               Место
             </th>
@@ -90,6 +125,11 @@ export function CrossTable({ title, standings, matches, className }: CrossTableP
                 <td className="border border-graphite-500 px-2 py-1 text-left text-[13px] font-medium text-graphite-900 whitespace-nowrap">
                   {row.full_name}
                 </td>
+                {showRating && (
+                  <td className="border border-graphite-500 px-1 py-1 text-center font-display text-[12px] text-graphite-600 whitespace-nowrap tabular-nums">
+                    {Number(row.rating_before ?? 0).toFixed(2)}
+                  </td>
+                )}
 
                 {ordered.map((col) => {
                   if (col.athlete_id === row.athlete_id) {
@@ -143,6 +183,13 @@ export function CrossTable({ title, standings, matches, className }: CrossTableP
                 <td className="border border-graphite-500 px-1 py-1 font-display text-[14px] font-bold text-graphite-900">
                   {row.played > 0 ? points : "—"}
                 </td>
+                {showSetsRatio && (
+                  <td className="border border-graphite-500 px-1 py-1 font-display text-[12px] text-graphite-700 whitespace-nowrap">
+                    {row.played > 0 && (pointsCount.get(points) ?? 0) >= 3
+                      ? `${row.sets_for}:${row.sets_against}`
+                      : ""}
+                  </td>
+                )}
                 <td className="border border-graphite-500 px-1 py-1 font-display text-[14px] font-bold text-red-600">
                   {row.place || "—"}
                 </td>

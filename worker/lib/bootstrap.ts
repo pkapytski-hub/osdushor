@@ -33,6 +33,12 @@ export async function ensureSchema(env: Env): Promise<void> {
         }
       }
       // Длину встречи (3, 5 или 7 партий) стали выбирать в настройках турнира.
+      // Вызов встречи на стол — отметка времени, которую ставит судья.
+      try {
+        await env.DB.prepare("ALTER TABLE tournament_matches ADD COLUMN called_at TEXT").run();
+      } catch {
+        /* колонка уже есть */
+      }
       // Блок сетки (1–2, 3–4, 5–8, 9–16 …) появился вместе с розыгрышем всех
       // мест в олимпийской системе.
       for (const column of ["place_from", "place_to"]) {

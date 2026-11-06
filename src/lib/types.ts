@@ -333,6 +333,8 @@ export interface TournamentMatch {
   winner_id: string | null;
   delta_a: number | null;
   delta_b: number | null;
+  /** Когда встречу вызвали на стол (вызов снимается в null). */
+  called_at?: string | null;
 }
 
 export interface TournamentStanding extends TournamentParticipant {

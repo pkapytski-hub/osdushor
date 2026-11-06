@@ -301,6 +301,8 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   winner_id TEXT,
   delta_a REAL,
   delta_b REAL,
+  -- Время вызова встречи на стол; NULL — встреча ещё не вызвана.
+  called_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_matches ON tournament_matches(tournament_id, stage, round, slot);

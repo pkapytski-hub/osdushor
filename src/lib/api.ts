@@ -226,6 +226,12 @@ export const api = {
           tech_loss_a: techLossA,
           tech_loss_b: techLossB,
         }),
+      call: (id: string, matchId: string, called: boolean) =>
+        mutate<{ item: TournamentDetail }>(
+          `/api/admin/tournaments/${id}/matches/${matchId}/call`,
+          "POST",
+          { called },
+        ),
       finalize: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/finalize`, "POST"),
       reopen: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/reopen`, "POST"),
     },

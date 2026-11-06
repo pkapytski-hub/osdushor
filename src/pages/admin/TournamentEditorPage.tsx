@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Plus, RefreshCw, Save, Shuffle, Trophy, Users } from "lucide-react";
+import { ArrowLeft, Check, Megaphone, Plus, RefreshCw, Save, Shuffle, Trophy, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError, api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
@@ -91,46 +91,6 @@ interface PendingConfirm {
   run: () => Promise<void>;
 }
 
-function StandingsTable({ rows }: { rows: TournamentStanding[] }) {
-  return (
-    <div className="overflow-x-auto border border-navy-100">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-mist text-[10px] uppercase tracking-[0.14em] text-graphite-500">
-          <tr>
-            <th scope="col" className="w-10 px-3 py-2 text-center font-medium" title="Жеребьёвочный номер в группе">№</th>
-            <th scope="col" className="w-10 px-3 py-2 font-medium">#</th>
-            <th scope="col" className="px-3 py-2 font-medium">Спортсмен</th>
-            <th scope="col" className="px-3 py-2 text-center font-medium">В</th>
-            <th scope="col" className="px-3 py-2 text-center font-medium">П</th>
-            <th scope="col" className="px-3 py-2 text-center font-medium" title="Победа — 2, поражение — 1, техническое поражение — 0">Очки</th>
-            <th scope="col" className="hidden px-3 py-2 text-center font-medium sm:table-cell">Сеты</th>
-            <th scope="col" className="px-3 py-2 text-right font-medium">Рейтинг</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-navy-100">
-          {rows.map((row) => (
-            <tr key={row.athlete_id}>
-              <td className="px-3 py-2 text-center font-display text-xs text-graphite-500">{row.seed || "—"}</td>
-              <td className="px-3 py-2 font-display text-navy-900">{row.place}</td>
-              <td className="px-3 py-2 font-medium text-navy-900">
-                {row.full_name}
-                <span className="ml-2 text-xs font-normal text-graphite-500">{row.birth_year ?? ""}</span>
-              </td>
-              <td className="px-3 py-2 text-center">{row.wins}</td>
-              <td className="px-3 py-2 text-center">{row.losses}</td>
-              <td className="px-3 py-2 text-center font-display text-navy-900">{row.points}</td>
-              <td className="hidden px-3 py-2 text-center text-graphite-600 sm:table-cell">
-                {row.sets_for}:{row.sets_against}
-              </td>
-              <td className="px-3 py-2 text-right font-display text-navy-900">{row.rating_before.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export default function TournamentEditorPage() {
   const { id } = useParams();
   const isNew = !id || id === "new";
@@ -199,6 +159,70 @@ export default function TournamentEditorPage() {
       return { group_no: group.group_no, rows };
     });
   }, [data, previewScores]);
+
+  // Вызов встреч идёт по кругам: сначала 1-й круг 1-й группы, потом 1-й круг
+  // 2-й группы и так далее — так все группы играют равномерно, а не одна
+  // группа доигрывает турнир целиком, пока другие ждут.
+  const callPlan = useMemo(() => {
+    if (!data) return [] as { round: number; groups: { group_no: number; index: number; matches: TournamentMatch[] }[] }[];
+    const rounds = [
+      ...new Set(data.groups.flatMap((group) => group.matches.map((match) => match.round))),
+    ].sort((a, b) => a - b);
+    return rounds.map((round) => ({
+      round,
+      groups: data.groups
+        .map((group, index) => ({
+          group_no: group.group_no,
+          index,
+          matches: group.matches
+            .filter((match) => match.round === round)
+            .sort((a, b) => a.slot - b.slot),
+        }))
+        .filter((entry) => entry.matches.length > 0),
+    }));
+  }, [data]);
+
+  // Сквозная нумерация встреч в порядке вызова: 1, 2, 3 …
+  const callNumbers = useMemo(() => {
+    const numbers = new Map<string, number>();
+    let next = 0;
+    for (const round of callPlan) {
+      for (const entry of round.groups) {
+        for (const match of entry.matches) numbers.set(match.id, ++next);
+      }
+    }
+    return numbers;
+  }, [callPlan]);
+
+  const updateScore = (matchId: string, side: "a" | "b", value: string) =>
+    setScores((current) => ({
+      ...current,
+      [matchId]: { ...(current[matchId] ?? { a: "", b: "" }), [side]: value },
+    }));
+
+  const toggleCall = async (match: TournamentMatch, called: boolean) => {
+    if (!id) return;
+    await run(async () => {
+      const response = await api.admin.tournaments.call(id, match.id, called);
+      // Меняем только отметку вызова: введённый, но не сохранённый счёт должен
+      // остаться в полях, поэтому весь экран заново не перерисовываем.
+      const stamp =
+        response.item.groups.flatMap((group) => group.matches).find((item) => item.id === match.id)?.called_at ?? null;
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              groups: current.groups.map((group) => ({
+                ...group,
+                matches: group.matches.map((item) =>
+                  item.id === match.id ? { ...item, called_at: stamp } : item,
+                ),
+              })),
+            }
+          : current,
+      );
+    }, called ? "Встреча вызвана" : "Вызов снят");
+  };
 
   const apply = (item: TournamentDetail) => {
     setData(item);
@@ -740,105 +764,94 @@ export default function TournamentEditorPage() {
             </p>
           )}
 
-          {data.match_count > 0 &&
-            data.groups.map((group, index) => {
-              const live = previewGroups.find((item) => item.group_no === group.group_no);
-              const rows = live?.rows ?? group.standings;
-              const groupUnsaved = group.matches.some(isUnsaved);
-              return (
-              <Fragment key={group.group_no}>
-                <section className="border border-navy-100 bg-white p-5 sm:p-6">
-                  <h3 className="text-lg normal-case tracking-normal">Группа {index + 1}</h3>
-                  <p className="mt-1 text-xs text-graphite-500">
-                    {group.standings.length} участников · встречи до {group.best_of} партий (победа — {group.sets_to_win})
-                  </p>
-                  {groupUnsaved && (
-                    <p className="mt-3 border-l-2 border-emerald-600 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                      В таблице уже учтён введённый, но не сохранённый счёт. Нажмите ✓ у встречи, чтобы записать результат.
-                    </p>
-                  )}
-                  {/* На широком экране таблица и шахматка стоят рядом: место не простаивает. */}
-                  <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] xl:items-start">
-                    <div className="min-w-0">
-                      <StandingsTable rows={rows} />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Круговая таблица</h4>
-                      <CrossTable
-                        standings={rows}
-                        matches={group.matches.map(previewMatch)}
-                        className="mt-2 border border-navy-100 bg-white"
-                      />
-                      <p className="mt-1 text-[11px] text-graphite-500 xl:hidden">
-                        На телефоне шахматку можно прокручивать вбок.
-                      </p>
-                    </div>
-                  </div>
-                  <h4 className="mt-6 font-display text-[12px] uppercase tracking-[0.16em] text-graphite-500">Встречи по кругам</h4>
-                  {/* Группируем встречи по кругам; если круг один — обычный список */}
-                  {(() => {
-                    const roundNumbers = [...new Set(group.matches.map((m) => m.round))].sort((a, b) => a - b);
-                    if (roundNumbers.length <= 1) {
-                      return (
-                        <div className="mt-2 divide-y divide-navy-100 border border-navy-100">
-                          {group.matches.map((match) => (
-                            <MatchRow
-                              key={match.id}
-                              match={match}
-                              scores={scores[match.id] ?? { a: "", b: "" }}
-                              winSets={group.sets_to_win}
-                              finished={finished}
-                              busy={busy}
-                              onChange={(side, value) =>
-                                setScores((current) => ({
-                                  ...current,
-                                  [match.id]: { ...(current[match.id] ?? { a: "", b: "" }), [side]: value },
-                                }))
-                              }
-                              onSave={() => void saveMatch(match)}
-                            />
-                          ))}
-                        </div>
-                      );
-                    }
+          {data.match_count > 0 && data.groups.length > 0 && (
+            <section className="border border-navy-100 bg-white p-5 sm:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-lg normal-case tracking-normal">Круговые таблицы и встречи</h2>
+                <p className="max-w-xl text-xs text-graphite-500">
+                  Встречи вызываются по кругам: сначала 1-й круг 1-й группы, затем 1-й круг 2-й группы и так
+                  далее — все группы проходят круг, прежде чем начнётся следующий.
+                </p>
+              </div>
+              <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] xl:items-start">
+                {/* Слева — круговые таблицы всех групп: в них сразу видны очки и места. */}
+                <div className="min-w-0 space-y-5">
+                  {data.groups.map((group, index) => {
+                    const live = previewGroups.find((item) => item.group_no === group.group_no);
+                    const rows = live?.rows ?? group.standings;
+                    const groupUnsaved = group.matches.some(isUnsaved);
                     return (
-                      <div className="mt-2 space-y-3">
-                        {roundNumbers.map((round) => {
-                          const roundMatches = group.matches.filter((m) => m.round === round);
-                          return (
-                            <div key={round} className="border border-navy-100">
-                              <div className="border-b border-navy-100 bg-mist px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-graphite-600">
-                                {round}-й круг
-                              </div>
-                              <div className="divide-y divide-navy-100">
-                                {roundMatches.map((match) => (
-                                  <MatchRow
-                                    key={match.id}
-                                    match={match}
-                                    scores={scores[match.id] ?? { a: "", b: "" }}
-                                    winSets={group.sets_to_win}
-                                    finished={finished}
-                                    busy={busy}
-                                    onChange={(side, value) =>
-                                      setScores((current) => ({
-                                        ...current,
-                                        [match.id]: { ...(current[match.id] ?? { a: "", b: "" }), [side]: value },
-                                      }))
-                                    }
-                                    onSave={() => void saveMatch(match)}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
+                      <div key={group.group_no} className="min-w-0">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <h3 className="text-base normal-case tracking-normal">Группа {index + 1}</h3>
+                          <p className="text-xs text-graphite-500">
+                            {group.standings.length} участников · встречи до {group.best_of} партий (победа —{" "}
+                            {group.sets_to_win})
+                          </p>
+                        </div>
+                        {groupUnsaved && (
+                          <p className="mt-2 border-l-2 border-emerald-600 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                            В таблице уже учтён введённый, но не сохранённый счёт. Нажмите ✓ у встречи, чтобы
+                            записать результат.
+                          </p>
+                        )}
+                        <CrossTable
+                          standings={rows}
+                          matches={group.matches.map(previewMatch)}
+                          showRating
+                          showSetsRatio
+                          className="mt-2 border border-navy-100 bg-white"
+                        />
+                        <p className="mt-1 text-[11px] text-graphite-500 xl:hidden">
+                          На телефоне таблицу можно прокручивать вбок.
+                        </p>
                       </div>
                     );
-                  })()}
-                </section>
-              </Fragment>
-              );
-            })}
+                  })}
+                </div>
+
+                {/* Справа — встречи по кругам: вызов идёт в этом же порядке. */}
+                <div className="min-w-0">
+                  <h3 className="text-base normal-case tracking-normal">Встречи по кругам</h3>
+                  <p className="mt-1 text-xs text-graphite-500">
+                    Вызовите встречу, когда пара приглашена на стол: отметка сохранится для всех организаторов.
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    {callPlan.map((round) => (
+                      <div key={round.round} className="border border-navy-100">
+                        <div className="border-b border-navy-100 bg-mist px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-graphite-600">
+                          {round.round}-й круг
+                        </div>
+                        {round.groups.map((entry) => (
+                          <div key={entry.group_no}>
+                            <div className="border-b border-navy-100 px-3 py-1 text-[11px] font-medium text-graphite-500">
+                              Группа {entry.index + 1}
+                            </div>
+                            <div className="divide-y divide-navy-100">
+                              {entry.matches.map((match) => (
+                                <MatchRow
+                                  key={match.id}
+                                  match={match}
+                                  number={callNumbers.get(match.id)}
+                                  scores={scores[match.id] ?? { a: "", b: "" }}
+                                  winSets={winSetsOfMatch(match, data)}
+                                  finished={finished}
+                                  busy={busy}
+                                  onChange={(side, value) => updateScore(match.id, side, value)}
+                                  onSave={() => void saveMatch(match)}
+                                  onCall={(called) => void toggleCall(match, called)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {data.playoff.length > 0 && (
             <section className="border border-navy-100 bg-white p-5 sm:p-6">
@@ -975,14 +988,18 @@ export default function TournamentEditorPage() {
 
 function MatchRow({
   match,
+  number,
   scores,
   winSets,
   finished,
   busy,
   onChange,
   onSave,
+  onCall,
 }: {
   match: TournamentMatch;
+  /** Номер встречи в порядке вызова: 1, 2, 3 … */
+  number?: number;
   scores: { a: string; b: string };
   /** Сколько партий нужно выиграть: 3 из 5, 4 из 7, 2 из 3. */
   winSets: number;
@@ -990,6 +1007,8 @@ function MatchRow({
   busy: boolean;
   onChange: (side: "a" | "b", value: string) => void;
   onSave: () => void;
+  /** Вызов встречи на стол; undefined — у встречи нет вызова (плей-офф). */
+  onCall?: (called: boolean) => void;
 }) {
   const winnerA = match.winner_id === match.player_a;
   const winnerB = match.winner_id === match.player_b;
@@ -1010,8 +1029,21 @@ function MatchRow({
   const change = (side: "a" | "b", value: string) => {
     onChange(side, value.replace(/[^0-9wW]/g, "").slice(0, 1));
   };
+  const calledAt = match.called_at ?? null;
+  const calledTime = calledAt
+    ? new Date(calledAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+    : "";
+  const played = match.score_a !== null && match.score_b !== null;
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
+      {typeof number === "number" && (
+        <span
+          className="w-5 shrink-0 text-center font-display text-[11px] text-graphite-400"
+          title="Номер встречи в порядке вызова"
+        >
+          {number}
+        </span>
+      )}
       <span className={cn("min-w-0 flex-1 truncate text-right", winnerA || previewWinner === "a" ? "font-semibold text-navy-900" : "text-graphite-700")}>
         {match.player_a_name}
       </span>
@@ -1082,6 +1114,29 @@ function MatchRow({
           aria-label="Сохранить счёт"
         >
           <Check size={16} aria-hidden="true" />
+        </button>
+      )}
+      {onCall && !finished && !played && (
+        <button
+          type="button"
+          className={cn(
+            "flex h-8 shrink-0 items-center justify-center gap-1 text-[11px] font-semibold uppercase tracking-wide",
+            calledAt
+              ? "px-2 bg-amber-100 text-amber-900 hover:bg-amber-200"
+              : "w-8 text-graphite-500 hover:bg-mist hover:text-navy-900",
+          )}
+          disabled={busy}
+          onClick={() => onCall(!calledAt)}
+          title={calledAt ? `Встреча вызвана в ${calledTime}. Нажмите, чтобы снять вызов.` : "Вызвать встречу на стол"}
+          aria-label={calledAt ? `Снять вызов (встреча вызвана в ${calledTime})` : "Вызвать встречу на стол"}
+        >
+          {calledAt ? (
+            <>
+              <X size={13} aria-hidden="true" /> {calledTime}
+            </>
+          ) : (
+            <Megaphone size={15} aria-hidden="true" />
+          )}
         </button>
       )}
       {unsavedScore && (
