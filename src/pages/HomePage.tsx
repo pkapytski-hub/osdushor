@@ -51,7 +51,7 @@ function Hero() {
             <span className="h-[2px] w-10 bg-accent-500" aria-hidden="true" />
             Гродненская область · Республика Беларусь
           </div>
-          <h1 className="display-1 mt-6 text-balance text-[clamp(2.7rem,7.2vw,5.6rem)]">
+          <h1 className="display-1 mt-6 text-balance text-[clamp(2.35rem,5vw,4rem)]">
             Воспитываем
             <br />
             чемпионов.

@@ -122,7 +122,7 @@ function NavGroup({ item }: { item: NavItem }) {
       <button
         type="button"
         className={cn(
-          "flex items-center gap-1 py-2 text-[12px] font-semibold uppercase tracking-[0.08em] transition-colors",
+          "flex items-center gap-1 whitespace-nowrap py-2 text-[12px] font-semibold uppercase tracking-[0.08em] transition-colors",
           active ? "text-accent-600" : "text-navy-900 hover:text-accent-600",
         )}
         aria-expanded={open}
@@ -330,7 +330,7 @@ export function Header() {
                   to={item.to!}
                   className={({ isActive }) =>
                     cn(
-                      "py-2 text-[12px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                      "whitespace-nowrap py-2 text-[12px] font-semibold uppercase tracking-[0.08em] transition-colors",
                       isActive ? "text-accent-600" : "text-navy-900 hover:text-accent-600",
                     )
                   }
