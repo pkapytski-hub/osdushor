@@ -277,11 +277,15 @@ function parseCategories(value: unknown): string[] {
 // Архив из Notion: места спортсменов на соревнованиях календаря. В отличие от
 // /api/results здесь показываются сами участники и занятые ими места.
 export async function listArchive(env: Env): Promise<Response> {
+  // Пол в карточке заполнен не у всех архивных спортсменов. Добираем его по
+  // тёзке из базы, а если и его нет — по имени: в 97% случаев имя однозначно
+  // указывает на юношу или девушку.
+  const gender = await archiveGenderLookup(env);
   const { results } = await env.DB.prepare(
     `SELECT c.id AS competition_id, c.slug, c.title AS competition_title, c.starts_on, c.ends_on,
             c.location, c.age_categories,
             r.id, r.place, r.age_category, r.event_kind, r.city,
-            a.id AS athlete_id, a.full_name, a.birth_year
+            a.id AS athlete_id, a.full_name, a.birth_year, a.gender
      FROM competition_results r
      JOIN competitions c ON c.id = r.competition_id
      JOIN athletes a ON a.id = r.athlete_id
@@ -311,6 +315,7 @@ export async function listArchive(env: Env): Promise<Response> {
       athlete_id: row.athlete_id,
       full_name: row.full_name,
       birth_year: row.birth_year,
+      gender: resolveGender(gender, String(row.full_name ?? ""), row.gender),
       place: row.place,
       age_category: row.age_category,
       event_kind: row.event_kind,
@@ -318,6 +323,50 @@ export async function listArchive(env: Env): Promise<Response> {
     });
   }
   return ok({ items: [...byCompetition.values()] });
+}
+
+type GenderLookup = {
+  byName: Map<string, "m" | "f">;
+  byFirstName: Map<string, "m" | "f">;
+};
+
+/** Имя без лишних пробелов, чтобы «Сенатосенко  Григорий» не выпадал. */
+function cleanName(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function firstName(value: string): string {
+  return cleanName(value).split(" ")[1] ?? "";
+}
+
+async function archiveGenderLookup(env: Env): Promise<GenderLookup> {
+  const { results } = await env.DB.prepare(
+    "SELECT full_name, gender FROM athletes WHERE gender IN ('m', 'f')",
+  ).all<{ full_name: string; gender: string }>();
+  const byName = new Map<string, "m" | "f">();
+  const votes = new Map<string, Map<string, number>>();
+  for (const row of results ?? []) {
+    const value = row.gender === "m" ? "m" : "f";
+    byName.set(cleanName(String(row.full_name ?? "")), value);
+    const name = firstName(String(row.full_name ?? ""));
+    if (!name) continue;
+    const counts = votes.get(name) ?? new Map<string, number>();
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+    votes.set(name, counts);
+  }
+  const byFirstName = new Map<string, "m" | "f">();
+  for (const [name, counts] of votes) {
+    const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (best) byFirstName.set(name, best[0] === "m" ? "m" : "f");
+  }
+  return { byName, byFirstName };
+}
+
+/** Пол записи архива: из карточки, затем по тёзке, затем по имени. */
+function resolveGender(lookup: GenderLookup, fullName: string, raw: unknown): "m" | "f" | null {
+  if (raw === "m" || raw === "f") return raw;
+  const name = cleanName(fullName);
+  return lookup.byName.get(name) ?? lookup.byFirstName.get(firstName(name)) ?? null;
 }
 
 // Карточка спортсмена: открытые поля (год рождения и разряд) и история мест.

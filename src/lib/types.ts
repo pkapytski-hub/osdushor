@@ -412,6 +412,8 @@ export interface ArchiveResult {
   athlete_id: string;
   full_name: string;
   birth_year: number | null;
+  /** Пол спортсмена в базе: "m" или "f"; может быть пустым у архивных. */
+  gender: string | null;
   place: number | null;
   age_category: string | null;
   event_kind: string | null;

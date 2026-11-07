@@ -10,7 +10,7 @@ import { formatDateRange, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ArchiveCompetition, ArchiveResult, Competition } from "@/lib/types";
 
-/** Сколько мест показываем в архиве, пока не раскрыли соревнование целиком. */
+/** Сколько мест показываем в группе, пока не раскрыли её целиком. */
 const ARCHIVE_PREVIEW = 9;
 /** Сколько соревнований архива выводим за один раз. */
 const ARCHIVE_PAGE = 40;
@@ -176,7 +176,8 @@ export default function ResultsPage() {
                 </span>
               </div>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-graphite-600">
-                Места воспитанников на соревнованиях календаря. Имя ведёт в карточку спортсмена.
+                Места воспитанников на соревнованиях календаря — отдельно юноши и девушки,
+                по возрастам и видам программы. Имя ведёт в карточку спортсмена.
               </p>
               {archiveYears.length > 1 && (
                 <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Фильтр архива по году">
@@ -237,13 +238,78 @@ export default function ResultsPage() {
   );
 }
 
-/** Одна строка архива: призёры на виду, остальные места — по запросу. */
+/** Одна группа мест: свой пол, возраст и вид программы — как в протоколе. */
+type ArchiveGroup = { key: string; label: string; rows: ArchiveResult[] };
+
+const KIND_LABELS: Record<string, string> = {
+  Парные: "парные",
+  Микст: "смешанные",
+  Командные: "командные",
+};
+
+/** «2007» → года рождения, «мужчины» → «Мужчины»; всё остальное — как в базе. */
+function ageLabel(age: string | null): string {
+  if (!age) return "";
+  if (/^\d{4}$/.test(age)) return age;
+  return age.charAt(0).toLocaleUpperCase("ru") + age.slice(1);
+}
+
+/** Взрослые категории («мужчины», «женщины») сами называют пол. */
+function impliedGender(age: string | null): "m" | "f" | null {
+  if (age === "мужчины") return "m";
+  if (age === "женщины") return "f";
+  return null;
+}
+
+/** Подпись группы: «Девушки 2007», «Юноши 2011 · парные», «Мужчины». */
+function groupLabel(row: ArchiveResult): string {
+  const age = row.age_category;
+  const implied = impliedGender(age);
+  const gender =
+    implied ??
+    (row.gender === "m" ? "m" : row.gender === "f" ? "f" : null);
+  const who = implied ? "" : gender === "f" ? "Девушки" : gender === "m" ? "Юноши" : "";
+  const head = [who, ageLabel(age)].filter(Boolean).join(" ");
+  const kind = row.event_kind ? KIND_LABELS[row.event_kind] ?? "" : "";
+  const parts = [head, kind].filter(Boolean).join(" · ");
+  // Пол в базе есть не у всех: такую группу не выдаём за юношескую или девичью.
+  if (!gender) return parts ? `${parts} (пол не указан)` : "Пол не указан";
+  return parts;
+}
+
+/** Порядок групп: сначала девушки и женщины, затем юноши и мужчины, затем те, где пол неизвестен. */
+function groupRank(row: ArchiveResult): [number, number, number] {
+  const implied = impliedGender(row.age_category);
+  const gender = implied ?? (row.gender === "m" ? "m" : row.gender === "f" ? "f" : null);
+  const genderRank = gender === "f" ? 0 : gender === "m" ? 1 : 2;
+  const ageRank = row.age_category && /^\d{4}$/.test(row.age_category) ? Number(row.age_category) : 9999;
+  const kindRank = row.event_kind === "Личные" ? 0 : row.event_kind === "Парные" ? 1 : row.event_kind === "Микст" ? 2 : 3;
+  return [genderRank, ageRank, kindRank];
+}
+
+/** Разбивает места соревнования на группы; внутри группы места по возрастанию. */
+function archiveGroups(results: ArchiveResult[]): ArchiveGroup[] {
+  const groups = new Map<string, { rank: [number, number, number]; label: string; rows: ArchiveResult[] }>();
+  for (const row of results) {
+    const key = [row.age_category, row.gender, row.event_kind].join("|");
+    let group = groups.get(key);
+    if (!group) {
+      group = { rank: groupRank(row), label: groupLabel(row), rows: [] };
+      groups.set(key, group);
+    }
+    group.rows.push(row);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => {
+      const [ra, rb] = [a[1].rank, b[1].rank];
+      return ra[0] - rb[0] || ra[1] - rb[1] || ra[2] - rb[2];
+    })
+    .map(([key, group]) => ({ key, label: group.label, rows: group.rows }));
+}
+
+/** Одна строка архива: соревнование и группы мест внутри него. */
 function ArchiveEntry({ item }: { item: ArchiveCompetition }) {
-  const [open, setOpen] = useState(false);
-  const folded = !open && item.results.length > ARCHIVE_PREVIEW;
-  const previewIds = new Set(item.results.slice(0, ARCHIVE_PREVIEW).map((row) => row.id));
-  const rows = folded ? item.results.filter((row) => previewIds.has(row.id)) : item.results;
-  const hidden = item.results.length - rows.length;
+  const groups = archiveGroups(item.results);
 
   return (
     <li className="py-5">
@@ -264,28 +330,49 @@ function ArchiveEntry({ item }: { item: ArchiveCompetition }) {
           <span className="text-xs text-graphite-500">{item.age_categories.join(", ")}</span>
         )}
       </div>
+      <div className="mt-3 space-y-3.5">
+        {groups.map((group) => (
+          <ArchiveGroupBlock key={group.key} group={group} />
+        ))}
+      </div>
+    </li>
+  );
+}
+
+/** Группа мест: подпись пола, возраста и вида программы плюс сами места. */
+function ArchiveGroupBlock({ group }: { group: ArchiveGroup }) {
+  const [open, setOpen] = useState(false);
+  const folded = !open && group.rows.length > ARCHIVE_PREVIEW;
+  const rows = folded ? group.rows.slice(0, ARCHIVE_PREVIEW) : group.rows;
+  const hidden = group.rows.length - rows.length;
+
+  return (
+    <div>
+      {group.label && (
+        <p className="text-[11px] uppercase tracking-[0.14em] text-graphite-500">{group.label}</p>
+      )}
       <ArchivePlaces rows={rows} />
       {hidden > 0 && (
         <button
           type="button"
-          className="mt-2 text-xs uppercase tracking-[0.14em] text-graphite-500 transition-colors hover:text-accent-600"
+          className="mt-1.5 text-xs uppercase tracking-[0.14em] text-graphite-500 transition-colors hover:text-accent-600"
           aria-expanded={open}
           onClick={() => setOpen(true)}
         >
           Ещё {hidden} {placesWord(hidden)}
         </button>
       )}
-      {open && item.results.length > ARCHIVE_PREVIEW && (
+      {open && group.rows.length > ARCHIVE_PREVIEW && (
         <button
           type="button"
-          className="mt-2 text-xs uppercase tracking-[0.14em] text-graphite-500 transition-colors hover:text-accent-600"
+          className="mt-1.5 text-xs uppercase tracking-[0.14em] text-graphite-500 transition-colors hover:text-accent-600"
           aria-expanded={open}
           onClick={() => setOpen(false)}
         >
           Свернуть
         </button>
       )}
-    </li>
+    </div>
   );
 }
 
