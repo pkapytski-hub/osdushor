@@ -19,6 +19,7 @@ export default function CompetitionsPage() {
   const query = params.get("q") ?? "";
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
+  const year = params.get("year") ?? "";
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
   const [search, setSearch] = useState(query);
 
@@ -27,10 +28,10 @@ export default function CompetitionsPage() {
   const competitions = useAsync(
     (signal) =>
       api.public.competitions(
-        { status, q: query, from, to, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, sort: status === "finished" ? "date_desc" : "asc" },
+        { status, q: query, from, to, year, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE, sort: status === "finished" ? "date_desc" : "asc" },
         signal,
       ),
-    [status, query, from, to, page],
+    [status, query, from, to, year, page],
   );
 
   const update = (next: Record<string, string | undefined>) => {
@@ -43,7 +44,7 @@ export default function CompetitionsPage() {
   };
 
   const hasDemo = competitions.data?.items.some((item) => item.is_demo) ?? false;
-  const hasFilters = Boolean(status || query || from || to);
+  const hasFilters = Boolean(status || query || from || to || year);
 
   return (
     <>
@@ -83,6 +84,28 @@ export default function CompetitionsPage() {
                 </button>
               ))}
             </div>
+            {(competitions.data?.years.length ?? 0) > 1 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-navy-100 pt-4">
+                <span className="mr-1 text-[11px] uppercase tracking-[0.14em] text-graphite-500">Год</span>
+                <button
+                  type="button"
+                  className={cn("chip", !year && "chip-active")}
+                  onClick={() => update({ year: undefined, page: undefined })}
+                >
+                  Все годы
+                </button>
+                {competitions.data?.years.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={cn("chip", year === value && "chip-active")}
+                    onClick={() => update({ year: value, page: undefined })}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            )}
             <form
               className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_180px_180px_auto]"
               onSubmit={(event) => {

@@ -92,6 +92,7 @@ export async function listCompetitions(env: Env, url: URL): Promise<Response> {
   const query = str(url.searchParams.get("q") ?? "", 120);
   const from = str(url.searchParams.get("from") ?? "", 20);
   const to = str(url.searchParams.get("to") ?? "", 20);
+  const year = str(url.searchParams.get("year") ?? "", 4);
   const age = str(url.searchParams.get("age") ?? "", 80);
   const sort = url.searchParams.get("sort") === "date_desc" ? "DESC" : "ASC";
   const where: string[] = ["is_published = 1", demoCondition(env)];
@@ -112,12 +113,16 @@ export async function listCompetitions(env: Env, url: URL): Promise<Response> {
     where.push("date(starts_on) <= date(?)");
     params.push(to);
   }
+  if (/^\d{4}$/.test(year)) {
+    where.push("substr(starts_on, 1, 4) = ?");
+    params.push(year);
+  }
   if (age) {
     where.push("age_categories LIKE ?");
     params.push(`%${age}%`);
   }
   const clause = where.join(" AND ");
-  const [rows, count] = await Promise.all([
+  const [rows, count, years] = await Promise.all([
     env.DB.prepare(
       `SELECT * FROM competitions WHERE ${clause} ORDER BY starts_on ${sort} LIMIT ? OFFSET ?`,
     )
@@ -126,8 +131,23 @@ export async function listCompetitions(env: Env, url: URL): Promise<Response> {
     env.DB.prepare(`SELECT COUNT(*) AS count FROM competitions WHERE ${clause}`)
       .bind(...params)
       .first<{ count: number }>(),
+    // Годы для фильтра считаются по всему календарю, а не по текущей выборке:
+    // иначе после выбора года остальные годы исчезли бы из переключателя.
+    env.DB.prepare(
+      `SELECT DISTINCT substr(starts_on, 1, 4) AS year FROM competitions
+       WHERE is_published = 1 AND ${demoCondition(env)} ORDER BY year DESC`,
+    ).all<{ year: string }>(),
   ]);
-  return listResponse((rows.results ?? []).map(toCompetition), count?.count ?? 0, limit, offset);
+  const items = (rows.results ?? []).map(toCompetition);
+  const total = count?.count ?? 0;
+  return ok({
+    items,
+    total,
+    limit,
+    offset,
+    has_more: offset + items.length < total,
+    years: (years.results ?? []).map((row) => row.year),
+  });
 }
 
 export async function getCompetition(env: Env, slug: string): Promise<Response> {

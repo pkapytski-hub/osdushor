@@ -314,7 +314,7 @@ function CalendarSection() {
           title="Ближайшие турниры"
           text="Даты, места проведения, возрастные категории и положения о соревнованиях."
           action={
-            <Link to="/kalendar" className="btn btn-outline">
+            <Link to={`/kalendar?year=${new Date().getFullYear()}`} className="btn btn-outline">
               Весь календарь <ArrowRight size={16} aria-hidden="true" />
             </Link>
           }

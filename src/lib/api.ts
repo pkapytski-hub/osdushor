@@ -9,6 +9,7 @@ import type {
   AuditEntry,
   Coach,
   Competition,
+  CompetitionListResult,
   DocumentItem,
   FeedbackMessage,
   GalleryItem,
@@ -116,9 +117,19 @@ export const api = {
     newsItem: (slug: string, signal?: AbortSignal) =>
       get<{ item: NewsItem }>(`/api/news/${encodeURIComponent(slug)}`, signal),
     competitions: (
-      params: { status?: string; q?: string; from?: string; to?: string; age?: string; sort?: string; limit?: number; offset?: number },
+      params: {
+        status?: string;
+        q?: string;
+        from?: string;
+        to?: string;
+        year?: string;
+        age?: string;
+        sort?: string;
+        limit?: number;
+        offset?: number;
+      },
       signal?: AbortSignal,
-    ) => get<ListResult<Competition>>(`/api/competitions${query(params)}`, signal),
+    ) => get<CompetitionListResult>(`/api/competitions${query(params)}`, signal),
     competition: (slug: string, signal?: AbortSignal) =>
       get<{ item: Competition; results: ArchiveResult[] }>(
         `/api/competitions/${encodeURIComponent(slug)}`,

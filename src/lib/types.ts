@@ -465,3 +465,8 @@ export interface ListResult<T> {
   offset: number;
   has_more: boolean;
 }
+
+export interface CompetitionListResult extends ListResult<Competition> {
+  /** Годы календаря с опубликованными соревнованиями — для фильтра по годам. */
+  years: string[];
+}
