@@ -38,11 +38,22 @@ function hasFileExtension(pathname: string): boolean {
 const HASHED_ASSET_PATH = /^\/assets\/[^/]+-[A-Za-z0-9_-]{6,}\.[a-z0-9]+$/i;
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
+const NOT_FOUND = () =>
+  new Response("Файл не найден", {
+    status: 404,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
+
 async function serveAsset(request: Request, assets: Fetcher, pathname: string): Promise<Response> {
   const response = await assets.fetch(request);
   const contentType = response.headers.get("Content-Type") ?? "";
-  // Несуществующий файл отдаётся SPA-фолбэком с кодом 200 — такой HTML нельзя
-  // кешировать на год, иначе браузер надолго запомнит 404-путь.
+  // Несуществующий файл отдаётся SPA-фолбэком: index.html с кодом 200. Для
+  // скриптов и картинок это хуже честного 404 — браузер пытается исполнить HTML
+  // как модуль, и вкладка остаётся с пустым экраном без внятной причины.
+  if (response.status === 200 && contentType.startsWith("text/html") && !pathname.endsWith("/index.html")) {
+    return NOT_FOUND();
+  }
+  // Такой HTML нельзя кешировать на год, иначе браузер надолго запомнит 404-путь.
   const cacheable =
     (response.status === 200 || response.status === 304) && !contentType.startsWith("text/html");
   if (!cacheable || !HASHED_ASSET_PATH.test(pathname)) return response;
