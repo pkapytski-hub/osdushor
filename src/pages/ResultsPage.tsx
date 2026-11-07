@@ -16,6 +16,7 @@ export default function ResultsPage() {
 
   const items = results.data?.items ?? [];
   const archiveItems = archive.data?.items ?? [];
+  const [resultsYear, setResultsYear] = useState("");
   const [archiveYear, setArchiveYear] = useState("");
 
   const archiveYears = [
@@ -38,6 +39,13 @@ export default function ResultsPage() {
     list.push(item);
     groups.set(year, list);
   }
+  const resultsYears = [...groups.keys()]
+    .filter((year) => /^\d{4}$/.test(year))
+    .map(Number)
+    .sort((a, b) => b - a);
+  const visibleGroups = resultsYear
+    ? [...groups.entries()].filter(([year]) => year === resultsYear)
+    : [...groups.entries()];
   const nothingYet = !results.loading && !results.error && !archive.loading && items.length === 0;
 
   return (
@@ -72,9 +80,32 @@ export default function ResultsPage() {
               action={<Link to="/kalendar" className="btn btn-outline btn-sm">Перейти в календарь</Link>}
             />
           )}
+          {groups.size > 0 && resultsYears.length > 1 && (
+            <div className="mb-8 flex flex-wrap gap-2" role="group" aria-label="Фильтр результатов по году">
+              <button
+                type="button"
+                className={cn("chip", !resultsYear && "chip-active")}
+                aria-pressed={!resultsYear}
+                onClick={() => setResultsYear("")}
+              >
+                Все годы
+              </button>
+              {resultsYears.map((year) => (
+                <button
+                  key={year}
+                  type="button"
+                  className={cn("chip", resultsYear === String(year) && "chip-active")}
+                  aria-pressed={resultsYear === String(year)}
+                  onClick={() => setResultsYear(String(year))}
+                >
+                  {year}
+                </button>
+              ))}
+            </div>
+          )}
           {groups.size > 0 && (
             <div className="space-y-12">
-              {[...groups.entries()].map(([year, yearItems]) => (
+              {visibleGroups.map(([year, yearItems]) => (
                 <section key={year}>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <h2 className="font-display text-3xl text-navy-900">{year}</h2>
