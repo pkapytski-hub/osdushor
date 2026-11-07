@@ -4,6 +4,7 @@ import { Seo } from "@/components/Seo";
 import { Breadcrumbs } from "@/components/site/PageHero";
 import { ArticleBody } from "@/components/site/cards";
 import { DemoNotice, EmptyState, LoadingBlock } from "@/components/site/primitives";
+import { ArchiveGroups } from "@/components/ArchiveGroups";
 import { api, fileUrl } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { competitionStatusLabel } from "@/lib/types";
@@ -165,33 +166,9 @@ export default function CompetitionDetailPage() {
                     <p className="font-display text-[12px] uppercase tracking-[0.16em] text-accent-700">
                       Места воспитанников
                     </p>
-                    <ul className="mt-3 divide-y divide-navy-100 border-y border-navy-100">
-                      {archive.map((row) => (
-                        <li key={row.id} className="flex items-baseline gap-3 py-2.5">
-                          <span
-                            className={cn(
-                              "w-7 shrink-0 text-right font-display text-base leading-6",
-                              row.place === 1 ? "text-accent-600" : "text-navy-900",
-                            )}
-                          >
-                            {row.place ?? "—"}
-                          </span>
-                          <div className="min-w-0">
-                            <Link
-                              to={`/sportsmeny/${row.athlete_id}`}
-                              className="text-sm text-navy-900 transition-colors hover:text-accent-600"
-                            >
-                              {row.full_name}
-                            </Link>
-                            {(row.age_category || row.event_kind) && (
-                              <span className="ml-2 text-xs text-graphite-500">
-                                {[row.age_category, row.event_kind].filter(Boolean).join(" · ")}
-                              </span>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="mt-3">
+                      <ArchiveGroups rows={archive} />
+                    </div>
                   </div>
                 )}
                 {item.results_text ? (

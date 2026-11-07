@@ -1,6 +1,7 @@
 import { fail, ipHash, nowIso, ok, rateLimit, readJson, str, bool } from "../lib/http";
 import { toCompetition, toNews, toBooleanRow } from "../lib/rows";
 import { verifyTurnstile } from "../lib/turnstile";
+import { genderByName } from "../lib/names";
 
 const NEWS_CATEGORIES = new Set([
   "school",
@@ -158,9 +159,10 @@ export async function getCompetition(env: Env, slug: string): Promise<Response> 
     .first<Record<string, unknown>>();
   if (!row) return fail(404, "not_found", "Соревнование не найдено или ещё не опубликовано.");
   // Архив выступлений: места воспитанников именно на этом соревновании.
+  const gender = await archiveGenderLookup(env);
   const archive = await env.DB.prepare(
     `SELECT r.id, r.place, r.age_category, r.event_kind, r.city,
-            a.id AS athlete_id, a.full_name, a.birth_year
+            a.id AS athlete_id, a.full_name, a.birth_year, a.gender
      FROM competition_results r
      JOIN athletes a ON a.id = r.athlete_id
      WHERE r.competition_id = ?
@@ -168,7 +170,13 @@ export async function getCompetition(env: Env, slug: string): Promise<Response> 
   )
     .bind(String(row.id))
     .all<Record<string, unknown>>();
-  return ok({ item: toCompetition(row), results: archive.results ?? [] });
+  return ok({
+    item: toCompetition(row),
+    results: (archive.results ?? []).map((result) => ({
+      ...result,
+      gender: resolveGender(gender, String(result.full_name ?? ""), result.gender),
+    })),
+  });
 }
 
 export async function listCoaches(env: Env): Promise<Response> {
@@ -366,7 +374,8 @@ async function archiveGenderLookup(env: Env): Promise<GenderLookup> {
 function resolveGender(lookup: GenderLookup, fullName: string, raw: unknown): "m" | "f" | null {
   if (raw === "m" || raw === "f") return raw;
   const name = cleanName(fullName);
-  return lookup.byName.get(name) ?? lookup.byFirstName.get(firstName(name)) ?? null;
+  const known = lookup.byName.get(name) ?? lookup.byFirstName.get(firstName(name));
+  return known ?? genderByName(firstName(name));
 }
 
 // Карточка спортсмена: открытые поля (год рождения и разряд) и история мест.
