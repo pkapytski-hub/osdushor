@@ -140,7 +140,8 @@ function readSheets(path) {
 // Разбор протокола
 // ---------------------------------------------------------------------------
 
-const NAME = /^[A-Za-zА-Яа-яЁёІіЇїЄє][A-Za-zА-Яа-яЁёІіЇїЄє'-]+(\s+[A-Za-zА-Яа-яЁёІіЇїЄє][A-Za-zА-Яа-яЁёІіЇїЄє'-]+)+$/;
+// Фамилия и имя (или инициал с точкой): «Шульга Татьяна», «Маргина М.»
+const NAME = /^[A-Za-zА-Яа-яЁёІіЇїЄє][A-Za-zА-Яа-яЁёІіЇїЄє'.-]+(\s+[A-Za-zА-Яа-яЁёІіЇїЄє][A-Za-zА-Яа-яЁёІіЇїЄє'.-]*\.?)+$/;
 const BLOCK = /^Места\s*(\d+)\s*[-–—]\s*(\d+)/i;
 
 const cleanName = (value) =>
@@ -175,26 +176,99 @@ function readFinalStage(rows) {
   return entries;
 }
 
+const genderOf = (text) =>
+  /девуш/i.test(String(text ?? "")) ? "f" : /юнош/i.test(String(text ?? "")) ? "m" : "";
+
+/** Заголовок финального этапа с диапазоном мест: «… Финальный этап. 1-8 места», «… 9-19 место». */
+const FINAL_TITLE = /Финальн[а-яё]*\s+этап[^\d]{0,40}?(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+мест/i;
+
+/** Места 1-8: в листе есть столбец «М», место стоит прямо в строке участника. */
+function readPlaceColumn(rows, titleRow) {
+  let placeCol = -1;
+  for (let row = titleRow + 1; row < Math.min(titleRow + 4, rows.length); row += 1) {
+    const index = (rows[row] ?? []).findIndex((cell) => String(cell ?? "").trim() === "М");
+    if (index >= 0) {
+      placeCol = index;
+      break;
+    }
+  }
+  if (placeCol < 0) return [];
+  const entries = [];
+  for (let row = titleRow + 1; row < rows.length; row += 1) {
+    const cells = rows[row] ?? [];
+    if (cells.some((cell) => FINAL_TITLE.test(String(cell ?? "")))) break;
+    const name = cleanName(cells[1]);
+    const place = String(cells[placeCol] ?? "").trim();
+    if (!NAME.test(name) || !/^\d{1,2}$/.test(place)) continue;
+    entries.push({ name, place: Number(place), block: "1-8" });
+  }
+  return entries;
+}
+
+/**
+ * Места 9-19: сетка утешения. Подпись «9 место» стоит в столбце имени, а сам
+ * участник записан строкой ниже в том же столбце.
+ */
+function readPlaceLabels(rows, from, to) {
+  const found = new Map();
+  rows.forEach((cells, row) => {
+    (cells ?? []).forEach((cell, col) => {
+      const match = /^(\d{1,2})\s*место$/i.exec(String(cell ?? "").trim());
+      if (!match) return;
+      const place = Number(match[1]);
+      if (place < from || place > to || found.has(place)) return;
+      const name = cleanName(rows[row + 1]?.[col]);
+      if (!NAME.test(name)) return;
+      found.set(place, { name, place, block: `${from}-${to}` });
+    });
+  });
+  return [...found.values()].sort((a, b) => a.place - b.place);
+}
+
+/**
+ * Один xlsx может содержать несколько финальных этапов: юноши 1-8, девушки 1-8,
+ * сетки утешения 9-19 — поэтому возвращаем список блоков.
+ */
 function readProtocol(path) {
   const sheets = readSheets(path);
-  const stage = sheets.find((sheet) =>
-    sheet.rows.some((row) => row.some((cell) => /Финальный\s+этап/i.test(String(cell ?? "")))),
-  );
-  if (!stage) throw new Error("В файле нет листа «Финальный этап».");
-  const stageCell = stage.rows
-    .flat()
-    .map((cell) => String(cell ?? ""))
-    .find((cell) => /Финальный\s+этап/i.test(cell));
-  // В заголовке соревнования есть «юношей и девушек», поэтому пол берём
-  // только из подзаголовка листа: «Финальный этап.Юноши».
-  const stageText = `${stageCell ?? ""} ${path.split(/[\\/]/).pop() ?? ""}`;
-  const gender = /девуш/i.test(stageText) ? "f" : /юнош/i.test(stageText) ? "m" : "";
-  if (!gender) throw new Error("Не удалось понять пол участников: в заголовке листа нет «Юноши» или «Девушки».");
-  const dateCell = stage.rows
-    .flat()
+  const blocks = [];
+  const dateCell = sheets
+    .flatMap((sheet) => sheet.rows.flat())
     .map((cell) => String(cell ?? ""))
     .find((cell) => /\b\d{1,2}\s+\S+\s+\d{4}/.test(cell));
-  return { gender, entries: readFinalStage(stage.rows), dateCell };
+
+  for (const sheet of sheets) {
+    const hasBlocks = sheet.rows.some((row) => row.some((cell) => BLOCK.test(String(cell ?? ""))));
+    if (hasBlocks) {
+      // Старый формат: лист «Финальный этап.Юноши» с блоками «Места 1-8», «9-16»…
+      const stageCell = sheet.rows
+        .flat()
+        .map((cell) => String(cell ?? ""))
+        .find((cell) => /Финальный\s+этап/i.test(cell));
+      // В заголовке соревнования есть «юношей и девушек», поэтому пол берём
+      // только из подзаголовка листа: «Финальный этап.Юноши».
+      const gender = genderOf(stageCell) || genderOf(path.split(/[\\/]/).pop());
+      if (!gender) throw new Error("Не удалось понять пол участников: в заголовке листа нет «Юноши» или «Девушки».");
+      blocks.push({ gender, entries: readFinalStage(sheet.rows), dateCell });
+      continue;
+    }
+    sheet.rows.forEach((cells, row) => {
+      (cells ?? []).forEach((cell) => {
+        const title = String(cell ?? "");
+        const match = FINAL_TITLE.exec(title);
+        if (!match) return;
+        const gender = genderOf(title);
+        if (!gender) return;
+        const from = Number(match[1]);
+        const to = Number(match[2]);
+        const entries = from === 1 ? readPlaceColumn(sheet.rows, row) : readPlaceLabels(sheet.rows, from, to);
+        if (entries.length > 0) blocks.push({ gender, entries, dateCell });
+      });
+    });
+  }
+
+  if (blocks.length === 0) throw new Error(`В файле нет финального этапа с местами: ${path}`);
+  return blocks;
 }
 
 /** Дата из имени папки/файла: 2026.01.10, 10.01.2026 или 10 января 2026. */
@@ -293,7 +367,7 @@ const targets = positional.length > 0 ? positional : ["protocols"];
 const files = collectFiles(targets);
 if (files.length === 0) throw new Error("В указанных путях нет xlsx-протоколов.");
 
-const parsed = files.map((path) => ({ path, ...readProtocol(path) }));
+const parsed = files.flatMap((path) => readProtocol(path).map((block) => ({ path, ...block })));
 
 // «??» здесь не годится: dateFromText возвращает пустую строку, а не null.
 const date =
@@ -329,7 +403,7 @@ const city = option("city") ?? "Гродно";
 const ageCategory = option("age") ?? (/20\d\d/.exec(competition.title)?.[0] ?? "");
 const sourceTitle = option("source") ?? String(competition.title).replace(/\s*\(.*$/, "").trim();
 
-const athletes = queryJson("SELECT id, full_name FROM athletes");
+const athletes = queryJson("SELECT id, full_name, gender FROM athletes");
 const byName = new Map();
 for (const athlete of athletes) {
   const key = normalize(athlete.full_name);
@@ -362,22 +436,28 @@ let updated = 0;
 for (const protocol of parsed) {
   const places = new Map();
   for (const entry of protocol.entries) places.set(entry.place, [...(places.get(entry.place) ?? []), entry.name]);
+  const label = `${protocol.gender === "f" ? "девушки" : "юноши"}, места ${protocol.entries[0]?.block ?? ""}`;
   for (const [place, names] of places) {
-    if (names.length > 1) ties.push(`${place} место — ${names.join(", ")} (в протоколе равные очки)`);
+    if (names.length > 1) ties.push(`${place} место (${label}) — ${names.join(", ")}`);
   }
   for (const entry of protocol.entries) {
     const key = normalize(entry.name);
     const candidates =
       byName.get(key) ?? bySurname.get(key.split(" ")[0])?.filter((row) => normalize(row.full_name).split(" ")[1]?.[0] === key.split(" ")[1]?.[0]) ?? [];
+    // Однофамильцев в протоколе различает пол блока: «Девушки» / «Юноши».
+    const sameGender =
+      candidates.length > 1 && protocol.gender
+        ? candidates.filter((row) => row.gender === protocol.gender)
+        : candidates;
     if (candidates.length === 0) {
       unmatched.push(`${entry.name} (${entry.place} место, ${protocol.path})`);
       continue;
     }
-    if (candidates.length > 1) {
+    if (sameGender.length > 1 || sameGender.length === 0) {
       ambiguous.push(`${entry.name} — ${candidates.map((row) => row.full_name).join(", ")}`);
       continue;
     }
-    const athlete = candidates[0];
+    const athlete = sameGender[0];
     if (usedAthletes.has(athlete.id)) {
       ambiguous.push(`${entry.name} — уже был в протоколе как ${usedAthletes.get(athlete.id)}`);
       continue;
@@ -385,6 +465,9 @@ for (const protocol of parsed) {
     usedAthletes.set(athlete.id, entry.name);
 
     const same = existingByAthlete.get(athlete.id);
+    // Фамилии в протоколах часто с инициалом — показываем, кого выбрали в базе.
+    const matched =
+      normalize(athlete.full_name) === key ? "" : ` как ${athlete.full_name}`;
     const eventKind = "Личные";
     if (same) {
       statements.push(
@@ -393,7 +476,7 @@ for (const protocol of parsed) {
           `source_title = ${quote(sourceTitle)}, updated_at = datetime('now') WHERE id = ${quote(same.id)};`,
       );
       updated += 1;
-      report.push(`${entry.name} — ${entry.place} место → обновлена существующая строка`);
+      report.push(`${entry.name} — ${entry.place} место (${label})${matched} → обновлена существующая строка`);
     } else {
       const notionId = `protocol:${date}:${competition.slug}:${key.replace(/\s+/g, "-")}`;
       statements.push(
@@ -403,7 +486,7 @@ for (const protocol of parsed) {
           `${sqlValue(ageCategory)}, ${quote(eventKind)}, ${quote(city)}, ${quote(sourceTitle)});`,
       );
       created += 1;
-      report.push(`${entry.name} — ${entry.place} место`);
+      report.push(`${entry.name} — ${entry.place} место (${label})${matched}`);
     }
   }
 }
@@ -412,7 +495,11 @@ console.log(`Соревнование: ${competition.title}`);
 console.log(`  ${competition.id} · ${competition.starts_on} · ${city} · возраст ${ageCategory || "не указан"}`);
 console.log(`Протоколов: ${parsed.length} (${files.map((path) => path.split(/[\\/]/).pop()).join(", ")})`);
 for (const protocol of parsed) {
-  console.log(`  ${protocol.path.split(/[\\/]/).pop()}: ${protocol.entries.length} участников, ${protocol.gender === "f" ? "девушки" : "юноши"}`);
+  const name = protocol.path.split(/[\\/]/).pop();
+  console.log(
+    `  ${name}: ${protocol.entries.length} мест (${protocol.gender === "f" ? "девушки" : "юноши"}, ` +
+      `${protocol.entries[0]?.block ?? ""})`,
+  );
 }
 console.log(`\nРазобрано мест: ${parsed.reduce((sum, protocol) => sum + protocol.entries.length, 0)}`);
 for (const line of report) console.log(`  ${line}`);
