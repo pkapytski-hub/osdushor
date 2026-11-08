@@ -9,7 +9,9 @@
  *   node scripts/import-protocol.mjs --competition=<id|slug>
  *
  * Что читается: лист «Финальный этап» каждого файла — блоки «Места 1-8»,
- * «9-16», «17-24» и колонка «Место». Предварительный этап и встречи не нужны:
+ * «9-16», «17-24», колонка «Место», а также круговые финалы домашних
+ * турниров («Одиночный разряд. Юноши. Финальный этап. Финал 1» с колонкой «М»).
+ * Предварительный этап и встречи не нужны:
  * на сайт попадает только итоговое место воспитанника, как в архиве из Notion.
  *
  * Соревнование берётся из календаря competitions: по --competition, иначе по
@@ -205,6 +207,48 @@ function readPlaceColumn(rows, titleRow) {
   return entries;
 }
 
+/** Целое из ячейки: «3» и «3.0» — одно и то же, всё остальное — не место. */
+const numberCell = (value) => {
+  const text = String(value ?? "").trim();
+  return /^\d{1,2}(\.0+)?$/.test(text) ? Number.parseInt(text, 10) : null;
+};
+
+/** Групповой финал: «Одиночный разряд. Юноши. Финальный этап. Финал 1». */
+const FINAL_GROUP_TITLE = /Одиночный\s+разряд\.?\s*(Юноши|Девушки)[^]{0,80}?Финальный\s+этап\.[^]{0,40}?Финал\s*(\d+)/i;
+
+/**
+ * Групповой финал (круговой, как в протоколах своей школы): шапка «# … О С М»,
+ * строка участника — номер в столбце E, фамилия в F, место в столбце «М».
+ */
+function readGroupFinal(rows, titleRow) {
+  let placeCol = -1;
+  let numberCol = -1;
+  for (let row = titleRow + 1; row < Math.min(titleRow + 4, rows.length); row += 1) {
+    const cells = rows[row] ?? [];
+    if (numberCol < 0) {
+      const index = cells.findIndex((cell) => String(cell ?? "").trim() === "#");
+      if (index >= 0) numberCol = index;
+    }
+    const placeIndex = cells.findIndex((cell) => String(cell ?? "").trim() === "М");
+    if (placeIndex >= 0) {
+      placeCol = placeIndex;
+      break;
+    }
+  }
+  if (placeCol < 0 || numberCol < 0) return [];
+  const entries = [];
+  for (let row = titleRow + 1; row < rows.length; row += 1) {
+    const cells = rows[row] ?? [];
+    if (cells.some((cell) => /Финальный\s+этап/i.test(String(cell ?? "")))) break;
+    const name = cleanName(cells[numberCol + 1]);
+    // Числа в этих таблицах записаны как 1.0, 2.0 — читаем только целые.
+    const place = numberCell(cells[placeCol]);
+    if (numberCell(cells[numberCol]) === null || !NAME.test(name) || place === null) continue;
+    entries.push({ name, place, block: "" });
+  }
+  return entries;
+}
+
 /**
  * Места 9-19: сетка утешения. Подпись «9 место» стоит в столбце имени, а сам
  * участник записан строкой ниже в том же столбце.
@@ -255,6 +299,16 @@ function readProtocol(path) {
     sheet.rows.forEach((cells, row) => {
       (cells ?? []).forEach((cell) => {
         const title = String(cell ?? "");
+        const groupMatch = FINAL_GROUP_TITLE.exec(title);
+        if (groupMatch) {
+          const entries = readGroupFinal(sheet.rows, row);
+          const gender = genderOf(groupMatch[1]);
+          if (entries.length > 0 && gender) {
+            const block = `Финал ${groupMatch[2]}`;
+            blocks.push({ gender, entries: entries.map((entry) => ({ ...entry, block })), dateCell });
+          }
+          return;
+        }
         const match = FINAL_TITLE.exec(title);
         if (!match) return;
         const gender = genderOf(title);
