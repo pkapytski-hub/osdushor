@@ -26,6 +26,8 @@
     "students:import:remote": "node scripts/import-students.mjs --remote",
     "results:import": "node scripts/import-notion.mjs",
     "results:import:remote": "node scripts/import-notion.mjs --remote",
+    "protocols:import": "node scripts/import-protocol.mjs",
+    "protocols:import:write": "node scripts/import-protocol.mjs --write",
     "deploy": "npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run --outdir=.wrangler/dry-run"
   },
