@@ -7,15 +7,13 @@ export function Logo({ onClick }: { onClick?: () => void }) {
   const logo = settings.logo_path;
   return (
     <Link to="/" onClick={onClick} className="flex shrink-0 items-center gap-3" aria-label="На главную страницу">
-      {logo ? (
-        <img src={fileUrl(logo)} alt="" className="h-12 w-auto max-w-[64px] object-contain" width="64" height="48" />
-      ) : (
-        <span className="relative flex h-12 w-12 items-center justify-center overflow-hidden bg-navy-900 text-white" aria-hidden="true">
-          <span className="font-display text-[26px] font-semibold leading-none">О</span>
-          <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-accent-600" />
-          <span className="absolute bottom-0 left-0 h-1 w-full bg-accent-600" />
-        </span>
-      )}
+      <img
+        src={logo ? fileUrl(logo) : "/images/logo.png"}
+        alt=""
+        className="h-11 w-11 shrink-0 rounded-md bg-white object-contain sm:h-14 sm:w-14"
+        width="56"
+        height="56"
+      />
       <span className="flex flex-col">
         <span className="font-display text-[17px] font-semibold uppercase leading-none tracking-[0.03em] text-navy-900">
           ОСДЮШОР
