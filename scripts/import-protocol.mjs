@@ -7,6 +7,7 @@
  *   node scripts/import-protocol.mjs "protocols/2026.01.10 ОСДЮШОР 2007"
  *   node scripts/import-protocol.mjs --local              # сверяться с локальной базой
  *   node scripts/import-protocol.mjs --competition=<id|slug>
+ *   node scripts/import-protocol.mjs --age=gender      # взрослые: «мужчины» / «женщины»
  *
  * Что читается: лист «Финальный этап» каждого файла — блоки «Места 1-8»,
  * «9-16», «17-24», колонка «Место», а также круговые финалы домашних
@@ -178,8 +179,9 @@ function readFinalStage(rows) {
   return entries;
 }
 
+// Взрослые чемпионаты подписаны «мужчины» / «женщины» вместо «юноши» / «девушки».
 const genderOf = (text) =>
-  /девуш/i.test(String(text ?? "")) ? "f" : /юнош/i.test(String(text ?? "")) ? "m" : "";
+  /девуш|женщин/i.test(String(text ?? "")) ? "f" : /юнош|мужчин/i.test(String(text ?? "")) ? "m" : "";
 
 /** Заголовок финального этапа с диапазоном мест: «… Финальный этап. 1-8 места», «… 9-19 место». */
 const FINAL_TITLE = /Финальн[а-яё]*\s+этап[^\d]{0,40}?(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+мест/i;
@@ -315,7 +317,9 @@ function readProtocol(path) {
         if (!gender) return;
         const from = Number(match[1]);
         const to = Number(match[2]);
-        const entries = from === 1 ? readPlaceColumn(sheet.rows, row) : readPlaceLabels(sheet.rows, from, to);
+        // Сетки взрослых чемпионатов подписаны «N место» и для первых мест тоже.
+        const labeled = readPlaceLabels(sheet.rows, from, to);
+        const entries = labeled.length > 0 ? labeled : from === 1 ? readPlaceColumn(sheet.rows, row) : [];
         if (entries.length > 0) blocks.push({ gender, entries, dateCell });
       });
     });
@@ -454,7 +458,7 @@ if (explicit) {
 }
 
 const city = option("city") ?? "Гродно";
-const ageCategory = option("age") ?? (/20\d\d/.exec(competition.title)?.[0] ?? "");
+const ageOption = option("age") ?? (/20\d\d/.exec(competition.title)?.[0] ?? "");
 const sourceTitle = option("source") ?? String(competition.title).replace(/\s*\(.*$/, "").trim();
 
 const athletes = queryJson("SELECT id, full_name, gender FROM athletes");
@@ -491,6 +495,8 @@ for (const protocol of parsed) {
   const places = new Map();
   for (const entry of protocol.entries) places.set(entry.place, [...(places.get(entry.place) ?? []), entry.name]);
   const label = `${protocol.gender === "f" ? "девушки" : "юноши"}, места ${protocol.entries[0]?.block ?? ""}`;
+  // --age=gender: у взрослых чемпионатов категория — пол участника.
+  const ageCategory = ageOption === "gender" ? (protocol.gender === "f" ? "женщины" : "мужчины") : ageOption;
   for (const [place, names] of places) {
     if (names.length > 1) ties.push(`${place} место (${label}) — ${names.join(", ")}`);
   }
@@ -546,7 +552,7 @@ for (const protocol of parsed) {
 }
 
 console.log(`Соревнование: ${competition.title}`);
-console.log(`  ${competition.id} · ${competition.starts_on} · ${city} · возраст ${ageCategory || "не указан"}`);
+console.log(`  ${competition.id} · ${competition.starts_on} · ${city} · возраст ${ageOption === "gender" ? "по полу" : ageOption || "не указан"}`);
 console.log(`Протоколов: ${parsed.length} (${files.map((path) => path.split(/[\\/]/).pop()).join(", ")})`);
 for (const protocol of parsed) {
   const name = protocol.path.split(/[\\/]/).pop();
