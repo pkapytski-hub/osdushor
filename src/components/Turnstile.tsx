@@ -83,7 +83,7 @@ export function Turnstile({ sitekey, onError }: TurnstileProps): ReactNode {
       } catch (err) {
         onError?.(err);
       }
-    });
+    }).catch((err) => onError?.(err));
   }, [sitekey, onError]);
 
   return (

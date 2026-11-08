@@ -282,7 +282,7 @@ export async function serveSpa(request: Request, env: Env, url: URL): Promise<Re
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://www.googletagmanager.com; connect-src 'self' https://mc.yandex.ru https://www.google-analytics.com; frame-src https://yandex.ru https://www.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://www.googletagmanager.com https://challenges.cloudflare.com; connect-src 'self' https://mc.yandex.ru https://www.google-analytics.com https://challenges.cloudflare.com; frame-src https://yandex.ru https://www.google.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
   );
   return new Response(html, { status: seo.status, headers });
 }
