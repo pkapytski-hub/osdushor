@@ -397,7 +397,20 @@ export async function getAthlete(env: Env, id: string): Promise<Response> {
   )
     .bind(id)
     .all<Record<string, unknown>>();
-  return ok({ item: { ...athlete, results: results ?? [] } });
+  // Личные встречи из протоколов: соперник и счёт. Если соревнования нет в
+  // календаре, вместо него показывается подпись источника (source_title).
+  const { results: matches } = await env.DB.prepare(
+    `SELECT m.id, m.held_on, m.stage, m.opponent_name, m.opponent_city, m.opponent_birth_year,
+            m.opponent_rank, m.result, m.score, m.source_title,
+            c.slug AS competition_slug, c.title AS competition_title
+     FROM competition_matches m
+     LEFT JOIN competitions c ON c.id = m.competition_id
+     WHERE m.athlete_id = ?
+     ORDER BY COALESCE(m.held_on, '') DESC, m.opponent_name`,
+  )
+    .bind(id)
+    .all<Record<string, unknown>>();
+  return ok({ item: { ...athlete, results: results ?? [], matches: matches ?? [] } });
 }
 
 // «Сегодня день рождения»: сравниваем только месяц и день, поэтому сама дата

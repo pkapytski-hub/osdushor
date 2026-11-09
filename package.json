@@ -28,6 +28,8 @@
     "results:import:remote": "node scripts/import-notion.mjs --remote",
     "protocols:import": "node scripts/import-protocol.mjs",
     "protocols:import:write": "node scripts/import-protocol.mjs --write",
+    "matches:import": "node scripts/import-matches.mjs",
+    "matches:import:write": "node scripts/import-matches.mjs --write",
     "deploy": "npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run --outdir=.wrangler/dry-run"
   },

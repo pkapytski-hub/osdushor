@@ -445,6 +445,22 @@ export interface AthleteProfileResult {
   starts_on: string | null;
 }
 
+/** Личная встреча из протокола: соперник, его карточка и счёт. */
+export interface AthleteProfileMatch {
+  id: string;
+  held_on: string | null;
+  stage: string | null;
+  opponent_name: string;
+  opponent_city: string | null;
+  opponent_birth_year: number | null;
+  opponent_rank: string | null;
+  result: "win" | "loss" | "";
+  score: string | null;
+  source_title: string;
+  competition_slug: string | null;
+  competition_title: string | null;
+}
+
 /** Карточка спортсмена: год рождения, разряд и история мест. */
 export interface AthleteProfile {
   id: string;
@@ -452,6 +468,7 @@ export interface AthleteProfile {
   birth_year: number | null;
   sport_rank: string | null;
   results: AthleteProfileResult[];
+  matches: AthleteProfileMatch[];
 }
 
 /** Спортсмен, у которого сегодня день рождения. */

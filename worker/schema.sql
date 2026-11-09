@@ -344,6 +344,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_competition_results_notion ON competition_
 CREATE INDEX IF NOT EXISTS idx_competition_results_athlete ON competition_results(athlete_id, held_on DESC);
 CREATE INDEX IF NOT EXISTS idx_competition_results_competition ON competition_results(competition_id, place);
 
+-- Личные встречи из протоколов: с кем и как сыграл воспитанник. Строка пишется
+-- только на спортсмена школы, соперник хранится текстом вместе с городом,
+-- годом рождения и разрядом из списка участников. Эти данные дополняют место
+-- в карточке спортсмена и на рейтинг школы не влияют.
+CREATE TABLE IF NOT EXISTS competition_matches (
+  id TEXT PRIMARY KEY,
+  notion_id TEXT,
+  competition_id TEXT REFERENCES competitions(id) ON DELETE CASCADE,
+  athlete_id TEXT NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  held_on TEXT,
+  stage TEXT,
+  opponent_name TEXT NOT NULL,
+  opponent_city TEXT,
+  opponent_birth_year INTEGER,
+  opponent_rank TEXT,
+  result TEXT NOT NULL DEFAULT '',
+  score TEXT,
+  source_title TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_competition_matches_notion ON competition_matches(notion_id);
+CREATE INDEX IF NOT EXISTS idx_competition_matches_athlete ON competition_matches(athlete_id, held_on DESC);
+CREATE INDEX IF NOT EXISTS idx_competition_matches_competition ON competition_matches(competition_id);
+
 -- Настройки по умолчанию. Пустые значения — осознанные заготовки:
 -- администрация заполняет их через панель, публичный сайт показывает «Уточняется».
 INSERT OR IGNORE INTO site_settings (key, value) VALUES
