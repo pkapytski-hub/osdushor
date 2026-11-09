@@ -62,6 +62,42 @@ const HEADER_TITLE = /Групп|Тур\b|этап|разряд/i;
 const SECTION = /СПИСОК|Главный|Секретарь/i;
 // Служебные подписи бланка, которые тоже выглядят как «Фамилия Имя».
 const SERVICE = /Фамилия|Имя\b|подпис|Победител|Команда|пара/i;
+// Шапка командного бланка: «Команда А» / «Команда Х» и названия команд рядом.
+const TEAM_LABEL = /Команда|Тур|Дата|Время|ПАРТИЯ|Фамилия|Игрок/i;
+const TEAM_TEXT = /ДЮСШ|СДЮШОР|област|РЦОП|ГОКЦОР|Динамо|БФСО|Смена|ОАО|г\.|школ|лицей|гимназ|центр/i;
+
+const REGION_CITIES = {
+  брестская: "Брест",
+  витебская: "Витебск",
+  гомельская: "Гомель",
+  гродненская: "Гродно",
+  минская: "Минск",
+  могилевская: "Могилёв",
+  могилёвская: "Могилёв",
+};
+
+/** Название организации: в колонку «Город» такое значение не годится. */
+const ORG = /ДЮСШ|СДЮШОР|ОАО|ГУ\s|МГУОР|ЦФОР|центр|школ|лицей|гимназ|клуб|команда|РЦОП|ГОКЦОР|БФСО|Динамо|Прибужье/i;
+
+// Один город в разных списках пишут по-разному: «Могилев» и «Могилёв».
+const CITY_ALIASES = { могилев: "Могилёв", бобруйска: "Бобруйск" };
+
+/** Название команды → город: «г.Минск», «Могилевская область 1»; иначе пусто. */
+const cityFromTeam = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const city = /г\.\s*([А-ЯЁ][а-яё-]+)/.exec(text);
+  // «г.Минск-1 к.» — номер команды, а не часть названия.
+  if (city) {
+    const name = city[1].replace(/[-–]+$/, "");
+    return CITY_ALIASES[name.toLowerCase()] ?? name;
+  }
+  const region = /^([А-ЯЁ][а-яё]+ская)\s+област/i.exec(text);
+  if (region) return REGION_CITIES[region[1].toLowerCase()] ?? `${region[1]} обл.`;
+  if (ORG.test(text)) return "";
+  const plain = text.replace(/[\s-]*\d+\s*(?:к\.)?$/, "").trim();
+  return CITY_ALIASES[plain.toLowerCase()] ?? plain;
+};
 
 // Бланк командной встречи: в нём нет ни сетки, ни списка с городами.
 const isTeamSheet = (rows) =>
@@ -277,14 +313,33 @@ function readTeamSheet(sheet) {
   let stage = "Командный матч";
   let players = [];
   let matches = [];
+  let teams = { A: "", X: "" };
   const flush = () => {
-    if (matches.length > 0) blocks.push({ stage, gender: "", players, matches, cityCol: -1 });
+    if (matches.length > 0) blocks.push({ stage, gender: "", players, matches, cityCol: -1, teams });
     players = [];
     matches = [];
   };
-  const addPlayer = (row, name) => {
-    players.push({ row, name });
+  const addPlayer = (row, name, team) => {
+    const found = players.findIndex((player) => player.row === row && player.name === name);
+    if (found >= 0) return found;
+    players.push({ row, name, team });
     return players.length - 1;
+  };
+  // Названия команд лежат рядом с метками «Команда А» и «Команда Х».
+  // Ячейки бывают смещены, поэтому берём ближайшее к метке название.
+  const readTeams = (headerRow, colA, colX) => {
+    const found = { A: "", X: "" };
+    for (let near = headerRow; near <= headerRow + 3; near += 1) {
+      const around = Array.from(rows[near] ?? [], (value) => String(value ?? "").trim());
+      around.forEach((value, col) => {
+        if (value.length < 4 || TEAM_LABEL.test(value)) return;
+        if (!TEAM_TEXT.test(value)) return;
+        const key = Math.abs(col - colA) <= Math.abs(col - colX) ? "A" : "X";
+        if (!found[key]) found[key] = value;
+      });
+      if (found.A && found.X) break;
+    }
+    return found;
   };
   for (let row = 0; row < rows.length; row += 1) {
     const source = rows[row] ?? [];
@@ -294,6 +349,11 @@ function readTeamSheet(sheet) {
     // Шапка встречи: «Команда А» и «Команда Х», рядом «Тур№» и номер тура.
     if (cells.some((value) => /Команда\s+[АAХX]/i.test(value))) {
       flush();
+      teams = readTeams(
+        row,
+        cells.findIndex((value) => /^Команда\s+[АA]$/i.test(value)),
+        cells.findIndex((value) => /^Команда\s+[ХX]$/i.test(value)),
+      );
       // «Тур№» стоит строкой ниже шапки: ищем номер тура в окрестности.
       let number = null;
       for (let near = row - 2; near <= row + 3 && !number; near += 1) {
@@ -337,9 +397,11 @@ function readTeamSheet(sheet) {
       break;
     }
     if (!score) continue;
+    // «А»/«В» — игроки команды А, «X»/«Y» — команды Х.
+    const leftTeam = cells[mark] === "А" || cells[mark] === "В" ? "A" : "X";
     matches.push({
-      a: addPlayer(row, left),
-      b: addPlayer(row, right),
+      a: addPlayer(row, left, leftTeam),
+      b: addPlayer(row, right, leftTeam === "A" ? "X" : "A"),
       winner: score[0] > score[1] ? "a" : "b",
       score,
     });
@@ -610,6 +672,26 @@ function rosterOf(dir) {
   return groupRosters.get(dir);
 }
 
+// Соперник часто встречается в списках других турниров: там его город
+// и год рождения и берём, если в папке с протоколом списка нет.
+let allRosters = null;
+function rosterAnywhere() {
+  if (!allRosters) {
+    allRosters = new Map();
+    for (const dir of dirFiles.keys()) {
+      for (const [key, value] of rosterOf(dir)) {
+        const known = allRosters.get(key) ?? {};
+        allRosters.set(key, {
+          city: known.city || value.city,
+          birthYear: known.birthYear ?? value.birthYear,
+          rank: known.rank || value.rank,
+        });
+      }
+    }
+  }
+  return allRosters;
+}
+
 for (const path of files) {
   const heldOn = dateFromText(path);
   let competition = explicit ? competitions.find((row) => row.id === explicit || row.slug === explicit) : null;
@@ -686,15 +768,15 @@ for (const path of files) {
           const opponentKey = normalize(side.other.name);
           if (opponentKey === normalize(side.self.name)) continue;
           // «ФАН Б.» из сетки соответствует «ФАН БОЯО» в списке участников.
-          const info =
-            roster.get(opponentKey) ??
+          const lookup = (map) =>
+            map.get(opponentKey) ??
             (opponentKey.split(" ")[1]?.length <= 1
-              ? [...roster].find(([key]) => {
+              ? [...map].find(([key]) => {
                   const [surname, initials] = [key.split(" ")[0], key.split(" ")[1]];
                   return surname === opponentKey.split(" ")[0] && initials?.[0] === opponentKey.split(" ")[1]?.[0];
                 })?.[1]
-              : null) ??
-            {};
+              : null);
+          const info = lookup(roster) ?? lookup(rosterAnywhere()) ?? {};
           const blockCity = cell(sheet.rows, side.other.row, block.cityCol);
           const blockYear = Number.parseInt(cell(sheet.rows, side.other.row + 1, block.cityCol), 10);
           const selfIsA = side.self === a;
@@ -724,7 +806,12 @@ for (const path of files) {
             heldOn: heldOn || null,
             stage: block.stage,
             opponentName: displayName(side.other.name),
-            opponentCity: info.city || (blockCity && !/^\d+$/.test(blockCity) ? blockCity : null),
+            opponentCity:
+              cityFromTeam(
+                info.city ||
+                  (blockCity && !/^\d+$/.test(blockCity) ? blockCity : "") ||
+                  (block.teams ? block.teams[side.other.team] : ""),
+              ) || null,
             opponentBirthYear: info.birthYear ?? (Number.isFinite(blockYear) && blockYear > 1900 ? blockYear : null),
             opponentRank: info.rank || null,
             result: side.won ? "win" : "loss",
