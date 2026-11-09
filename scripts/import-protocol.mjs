@@ -97,6 +97,33 @@ const genderOf = (text) =>
 /** Заголовок финального этапа с диапазоном мест: «… Финальный этап. 1-8 места», «… 9-19 место». */
 const FINAL_TITLE = /Финальн[а-яё]*\s+этап[^\d]{0,40}?(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+мест/i;
 
+/** Подпись кругового финала с диапазоном мест: «1-8 место», «9-16 места». */
+const PLACE_RANGE = /^(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+мест/i;
+
+/**
+ * Круговой финал без слова «Финальный этап» (республиканские турниры, области):
+ * подпись «1-8 место», ниже строки участников, где место — первая ячейка,
+ * фамилия — третья. Место в этих таблицах записано текстом «1.0», «8.0»:
+ * целые номера участников — уже другой формат, такой блок не трогаем.
+ */
+function readRangeFinal(rows, titleRow, from, to) {
+  const entries = [];
+  for (let row = titleRow + 1; row < rows.length; row += 1) {
+    const cells = rows[row] ?? [];
+    if (cells.some((cell) => PLACE_RANGE.test(String(cell ?? "").trim()))) break;
+    const raw = String(cells[0] ?? "").trim();
+    const name = cleanName(cells[2]);
+    if (!/^\d{1,2}\.0+$/.test(raw) || !NAME.test(name)) continue;
+    const place = Number.parseInt(raw, 10);
+    if (place < from || place > to) continue;
+    entries.push({ name, place });
+  }
+  const places = new Set(entries.map((entry) => entry.place));
+  return entries.length >= 4 && places.size === entries.length
+    ? entries.map((entry) => ({ ...entry, block: `${from}-${to}` }))
+    : [];
+}
+
 /** Места 1-8: в листе есть столбец «М», место стоит прямо в строке участника. */
 function readPlaceColumn(rows, titleRow) {
   let placeCol = -1;
@@ -212,6 +239,16 @@ function readProtocol(path) {
     sheet.rows.forEach((cells, row) => {
       (cells ?? []).forEach((cell) => {
         const title = String(cell ?? "");
+        const rangeMatch = PLACE_RANGE.exec(title.trim());
+        if (rangeMatch) {
+          // Пол в таких таблицах — подзаголовок «ЮНОШИ» / «ДЕВУШКИ» над блоком.
+          const gender = genderOf(sheet.rows.slice(0, row).flat().map((value) => String(value ?? "")).reverse().find((value) => genderOf(value)));
+          const entries = gender
+            ? readRangeFinal(sheet.rows, row, Number(rangeMatch[1]), Number(rangeMatch[2]))
+            : [];
+          if (entries.length > 0) blocks.push({ gender, entries, dateCell });
+          return;
+        }
         const groupMatch = FINAL_GROUP_TITLE.exec(title);
         if (groupMatch) {
           const entries = readGroupFinal(sheet.rows, row);
@@ -336,7 +373,22 @@ const targets = positional.length > 0 ? positional : ["protocols"];
 const files = collectFiles(targets);
 if (files.length === 0) throw new Error("В указанных путях нет xlsx-протоколов.");
 
-const parsed = files.flatMap((path) => readProtocol(path).map((block) => ({ path, ...block })));
+// В папке могут лежать и протоколы предварительных раундов без мест — их
+// пропускаем, чтобы один такой файл не отменял импорт всей папки.
+const parsed = [];
+const skipped = [];
+for (const path of files) {
+  try {
+    parsed.push(...readProtocol(path).map((block) => ({ path, ...block })));
+  } catch (error) {
+    if (!/нет финального этапа/.test(String(error?.message))) throw error;
+    skipped.push(path);
+  }
+}
+if (parsed.length === 0) {
+  throw new Error(`Ни в одном протоколе нет финального этапа с местами: ${files.join(", ")}`);
+}
+for (const path of skipped) console.log(`  пропущен (нет мест): ${path.split(/[\\/]/).pop()}`);
 
 // «??» здесь не годится: dateFromText возвращает пустую строку, а не null.
 const date =
