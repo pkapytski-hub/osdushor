@@ -157,6 +157,9 @@ const setScore = (text) => {
  */
 function readGroups(sheet) {
   const rows = sheet.rows;
+  // В командном протоколе сетки нет: там встречаются игроки разных команд,
+  // а «2»/«1» — счёт команды, а не личная победа.
+  if (rows.slice(0, 10).some((row) => (row ?? []).some((value) => /КОМАНДН/i.test(String(value ?? ""))))) return [];
   const heads = [];
   for (let row = 0; row < rows.length; row += 1) {
     const cols = headerColumns(rows[row]);
