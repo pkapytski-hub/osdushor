@@ -519,15 +519,12 @@ const files = collectFiles(targets);
 if (files.length === 0) throw new Error("В указанных путях нет xlsx-протоколов.");
 
 const explicit = option("competition");
-const competitions = queryJson("SELECT id, slug, title, starts_on FROM competitions");
+const competitions = queryJson("SELECT id, slug, title, starts_on, ends_on FROM competitions");
 if (explicit) {
   const found = competitions.find((row) => row.id === explicit || row.slug === explicit);
   if (!found) throw new Error(`Соревнование не найдено: ${explicit}`);
 }
-const byDate = new Map();
-for (const row of competitions) {
-  byDate.set(row.starts_on, [...(byDate.get(row.starts_on) ?? []), row]);
-}
+
 
 const athletes = queryJson("SELECT id, full_name, gender FROM athletes");
 const byFullName = new Map();
@@ -617,7 +614,13 @@ for (const path of files) {
   const heldOn = dateFromText(path);
   let competition = explicit ? competitions.find((row) => row.id === explicit || row.slug === explicit) : null;
   if (!competition && heldOn) {
-    const candidates = byDate.get(heldOn) ?? [];
+    // Турнир может идти несколько дней, а протоколы лежат по дням: берём всё
+    // соревнование, в интервал которого попадает дата из имени папки.
+    const candidates = competitions.filter((row) => {
+      const from = String(row.starts_on ?? "");
+      const to = String(row.ends_on ?? "") || from;
+      return from <= heldOn && heldOn <= to;
+    });
     // В одну дату бывает и первенство школы, и командное первенство РБ:
     // выбираем по пометке в названии папки (КПРБ / ОСДЮШОР).
     const folder = path.split(/[\\/]/)[1] ?? "";
@@ -628,14 +631,31 @@ for (const path of files) {
         : null;
     const hinted = hint ? candidates.filter((row) => hint.test(String(row.title))) : [];
     const school = candidates.filter((row) => /ОСДЮШОР/i.test(String(row.title)));
+    // Сравниваем с пометкой папки: слова («Смена», «Кубок области») и
+    // аббревиатуры («ЛЧГО», «ОРТСИ» — первые буквы слов заголовка).
+    const folderWords = normalize(folder).split(" ").filter((word) => word.length >= 3);
+    const scoreOf = (title) => {
+      const words = normalize(String(title)).split(" ");
+      const set = new Set(words);
+      const lexical = folderWords.filter((word) => set.has(word)).length;
+      const abbr = words.filter((word) => word.length >= 2).map((word) => word[0]).join("");
+      const shortcut = folderWords.some((word) => (word.length >= 4 ? abbr.includes(word) : false)) ? 1 : 0;
+      return lexical + shortcut;
+    };
+    const best = candidates
+      .map((row) => ({ row, score: scoreOf(row.title) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
     competition =
-      hinted.length === 1
-        ? hinted[0]
-        : school.length === 1
-          ? school[0]
-          : candidates.length === 1
-            ? candidates[0]
-            : null;
+      best.length > 0 && (best.length === 1 || best[1].score < best[0].score)
+        ? best[0].row
+        : hinted.length === 1
+          ? hinted[0]
+          : school.length === 1
+            ? school[0]
+            : candidates.length === 1
+              ? candidates[0]
+              : null;
   }
   const sourceTitle = competition
     ? String(competition.title).replace(/\s*\(.*$/, "").trim()
@@ -784,4 +804,13 @@ if (dryRun) {
 } else {
   executeSql(statements);
   console.log(`\nЗаписано: ${rows.length} строк.`);
+  // При полном прогоне убираем строки, которые разбор больше не подтверждает:
+  // иначе после изменения привязки к соревнованию остаются дубли.
+  if (obsolete.length > 0 && positional.length === 0) {
+    for (let index = 0; index < obsolete.length; index += 100) {
+      const chunk = obsolete.slice(index, index + 100).map(quote).join(", ");
+      executeSql([`DELETE FROM competition_matches WHERE notion_id IN (${chunk});`]);
+    }
+    console.log(`Удалено устаревших строк: ${obsolete.length}.`);
+  }
 }
