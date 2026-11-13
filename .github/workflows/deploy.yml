@@ -21,7 +21,7 @@ jobs:
     # Зависший wrangler иначе держит job до шести часов.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Недостающий секрет иначе превращается в пустую строку и непонятную
       # ошибку аутентификации уже после сборки.
@@ -33,7 +33,7 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Задайте секрет CLOUDFLARE_API_TOKEN: Settings → Secrets and variables → Actions."; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Задайте секрет CLOUDFLARE_ACCOUNT_ID: Settings → Secrets and variables → Actions."; exit 1; }
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
