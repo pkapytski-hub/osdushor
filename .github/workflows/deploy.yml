@@ -1,8 +1,10 @@
 name: Deploy
 
 on:
+  # main — дефолтная ветка репозитория, master — рабочая; код в них совпадает,
+  # поэтому публикуем из любой, чтобы коммит с телефона не остался без деплоя.
   push:
-    branches: [master]
+    branches: [master, main]
   workflow_dispatch:
 
 # Две публикации одновременно ломают загрузку ассетов в один и тот же Worker.
@@ -16,8 +18,20 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Зависший wrangler иначе держит job до шести часов.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      # Недостающий секрет иначе превращается в пустую строку и непонятную
+      # ошибку аутентификации уже после сборки.
+      - name: Проверить секреты
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Задайте секрет CLOUDFLARE_API_TOKEN: Settings → Secrets and variables → Actions."; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Задайте секрет CLOUDFLARE_ACCOUNT_ID: Settings → Secrets and variables → Actions."; exit 1; }
 
       - uses: actions/setup-node@v4
         with:
