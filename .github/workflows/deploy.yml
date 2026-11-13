@@ -1,0 +1,53 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Деплой не должен обгонять сам себя: две публикации одновременно ломают
+# загрузку ассетов в один и тот же Worker.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверить доступ к Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Не заданы секреты CLOUDFLARE_API_TOKEN и/или CLOUDFLARE_ACCOUNT_ID (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          npx wrangler whoami
+
+      # npm run deploy = typecheck + сборка фронта и бандла Worker + wrangler deploy.
+      - name: Собрать и опубликовать
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy
+
+      - name: Проверить, что опубликованный сайт отвечает
+        run: |
+          origin=$(sed -n 's/^APP_ORIGIN = "\(.*\)"/\1/p' wrangler.toml | head -1)
+          echo "Проверяю $origin/healthz"
+          curl -fsS --retry 5 --retry-delay 3 "$origin/healthz"
