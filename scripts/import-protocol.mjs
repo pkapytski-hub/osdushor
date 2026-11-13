@@ -11,7 +11,9 @@
  *
  * Что читается: лист «Финальный этап» каждого файла — блоки «Места 1-8»,
  * «9-16», «17-24», колонка «Место», а также круговые финалы домашних
- * турниров («Одиночный разряд. Юноши. Финальный этап. Финал 1» с колонкой «М»).
+ * турниров («Одиночный разряд. Юноши. Финальный этап. Финал 1» с колонкой «М»)
+ * и финальные таблицы, где место записано в столбце «Место» (ПГО, Кубок
+ * Надежд, финалы областных спартакиад).
  * Предварительный этап и встречи не нужны:
  * на сайт попадает только итоговое место воспитанника, как в архиве из Notion.
  *
@@ -209,6 +211,78 @@ function readPlaceLabels(rows, from, to) {
   return [...found.values()].sort((a, b) => a.place - b.place);
 }
 
+/** Диапазон мест в подписи: «1-8 место», «(1-9 место)», «9-16 места». */
+const RANGE_WORD = /(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*мест/i;
+const RANGE_PAREN = /\((\d{1,2})\s*[-–—]\s*(\d{1,2})\)/;
+
+/** Подпись финала: «финал», «1 финал», «ФИНАЛЬНЫЙ РАУНД», «дев фин». */
+const FINAL_MARK = /финал|фин(?![а-яё])/i;
+
+/** Ближайший пол над таблицей: «ЮНОШИ» / «ДЕВУШКИ» в шапке листа. */
+function genderAbove(rows, row) {
+  for (let index = row - 1; index >= Math.max(0, row - 8); index -= 1) {
+    for (const cell of rows[index] ?? []) {
+      const gender = genderOf(cell);
+      if (gender) return gender;
+    }
+  }
+  return "";
+}
+
+/**
+ * Финальная таблица с колонкой «Место»: номер участника в столбце B, фамилия
+ * в C, место — в столбце под заголовком «Место». Так оформлены круговые
+ * финалы ПГО, «Кубка Надежд» и областных спартакиад: диапазон мест стоит в
+ * подписи над шапкой («1 финал (1-9 место)», «9-16 место»).
+ *
+ * Блок принимается только целиком: места должны попасть в объявленный
+ * диапазон и не повторяться, иначе это групповой этап, а не финал.
+ */
+function readPlacedFinals(rows, sheetTitle) {
+  const blocks = [];
+  rows.forEach((cells, row) => {
+    const header = Array.from(cells ?? []).map((cell) => String(cell ?? "").trim());
+    const placeCol = header.findIndex((cell) => cell === "Место");
+    if (placeCol < 0) return;
+    if (!header.includes("№") || !header.some((cell) => /^Фамилия/i.test(cell))) return;
+
+    // Диапазон и слово «финал» берём из подписей над шапкой или из имени листа.
+    let range = null;
+    let finalMark = FINAL_MARK.test(sheetTitle) ? sheetTitle : "";
+    for (let index = row - 1; index >= Math.max(0, row - 8) && !range; index -= 1) {
+      const line = (rows[index] ?? []).map((cell) => String(cell ?? "").trim()).filter(Boolean).join(" ");
+      if (!line) continue;
+      const match = RANGE_WORD.exec(line) || RANGE_PAREN.exec(line);
+      if (!match) continue;
+      range = match;
+      if (FINAL_MARK.test(line)) finalMark = line;
+      break;
+    }
+    if (!range || !finalMark) return;
+    const from = Number(range[1]);
+    const to = Number(range[2]);
+
+    const entries = [];
+    for (let index = row + 1; index < rows.length; index += 1) {
+      const line = rows[index] ?? [];
+      if (line.some((cell) => /Главный\s+судья/i.test(String(cell ?? "")))) break;
+      const number = numberCell(line[1]);
+      const name = cleanName(line[2]);
+      if (number === null || !NAME.test(name)) continue;
+      const place = numberCell(line[placeCol]);
+      if (place === null || place < from || place > to) continue;
+      entries.push({ name, place });
+    }
+
+    const places = new Set(entries.map((entry) => entry.place));
+    if (entries.length < 3 || places.size !== entries.length) return;
+    const gender = genderAbove(rows, row) || genderOf(sheetTitle);
+    if (!gender) return;
+    blocks.push({ gender, entries: entries.map((entry) => ({ ...entry, block: `${from}-${to}` })) });
+  });
+  return blocks;
+}
+
 /**
  * Один xlsx может содержать несколько финальных этапов: юноши 1-8, девушки 1-8,
  * сетки утешения 9-19 — поэтому возвращаем список блоков.
@@ -222,6 +296,14 @@ function readProtocol(path) {
     .find((cell) => /\b\d{1,2}\s+\S+\s+\d{4}/.test(cell));
 
   for (const sheet of sheets) {
+    // Финальная таблица с колонкой «Место» читается первой: в ней номер
+    // участника в столбце B, и старый разбор принял бы его за место.
+    const placed = readPlacedFinals(sheet.rows, sheet.title);
+    if (placed.length > 0) {
+      for (const block of placed) blocks.push({ ...block, dateCell });
+      continue;
+    }
+
     const hasBlocks = sheet.rows.some((row) => row.some((cell) => BLOCK.test(String(cell ?? ""))));
     if (hasBlocks) {
       // Старый формат: лист «Финальный этап.Юноши» с блоками «Места 1-8», «9-16»…
