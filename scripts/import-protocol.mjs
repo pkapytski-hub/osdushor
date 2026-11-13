@@ -283,6 +283,47 @@ function readPlacedFinals(rows, sheetTitle) {
   return blocks;
 }
 
+/** Подпись места у игрока в сетке: «1 место», «17 место». */
+const PLACE_CAPTION = /^(\d{1,2})\s*место$/i;
+
+/**
+ * Сетка с подписью места рядом с игроком: строка матча за первое место
+ * содержит «1 место», а справа от подписи — фамилия занявшего его игрока.
+ * Так оформлены выгрузки из Google Sheets (ПРБ, спартакиады).
+ *
+ * Имя берём только из той же строки справа; подпись без имени (вторая,
+ * незаполненная копия сетки на листе) пропускается.
+ */
+function readPlaceCaptions(rows, sheetTitle) {
+  if (!FINAL_MARK.test(sheetTitle)) return [];
+  const found = new Map();
+  rows.forEach((cells, row) => {
+    (cells ?? []).forEach((cell, col) => {
+      const match = PLACE_CAPTION.exec(String(cell ?? "").trim());
+      if (!match) return;
+      const place = Number(match[1]);
+      if (found.has(place)) return;
+      for (let next = col + 1; next <= col + 3; next += 1) {
+        const name = cleanName(cells[next]);
+        if (!NAME.test(name)) continue;
+        found.set(place, { name, place, row });
+        break;
+      }
+    });
+  });
+  const entries = [...found.values()].sort((a, b) => a.place - b.place);
+  if (entries.length < 3 || new Set(entries.map((entry) => entry.place)).size !== entries.length) return [];
+  const gender = genderOf(sheetTitle) || genderAbove(rows, entries[0].row);
+  if (!gender) return [];
+  const block = `${entries[0].place}-${entries[entries.length - 1].place}`;
+  return [
+    {
+      gender,
+      entries: entries.map((entry) => ({ name: entry.name, place: entry.place, block })),
+    },
+  ];
+}
+
 /**
  * Один xlsx может содержать несколько финальных этапов: юноши 1-8, девушки 1-8,
  * сетки утешения 9-19 — поэтому возвращаем список блоков.
@@ -301,6 +342,13 @@ function readProtocol(path) {
     const placed = readPlacedFinals(sheet.rows, sheet.title);
     if (placed.length > 0) {
       for (const block of placed) blocks.push({ ...block, dateCell });
+      continue;
+    }
+
+    // Сетка с подписью «N место» и фамилией справа от неё.
+    const captioned = readPlaceCaptions(sheet.rows, sheet.title);
+    if (captioned.length > 0) {
+      for (const block of captioned) blocks.push({ ...block, dateCell });
       continue;
     }
 
