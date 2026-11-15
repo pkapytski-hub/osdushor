@@ -17,6 +17,8 @@ import {
   Menu,
   Medal,
   Newspaper,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
   Shield,
@@ -160,6 +162,22 @@ function SidebarContent({ user, onNavigate }: { user: AdminContext["user"]; onNa
 
 function AdminShell({ user }: { user: AdminContext["user"] }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // На широком экране меню можно свернуть, чтобы таблицам было больше места.
+  // Выбор запоминается: следующий заход в панель откроется в том же виде.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("admin.sidebar.collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("admin.sidebar.collapsed", collapsed ? "1" : "0");
+    } catch {
+      /* приватный режим браузера */
+    }
+  }, [collapsed]);
   const mobileRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = mobileRef.current;
@@ -176,10 +194,12 @@ function AdminShell({ user }: { user: AdminContext["user"] }) {
 
   return (
     <div className="min-h-screen bg-mist">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[264px] lg:block">
+      <aside
+        className={cn("fixed inset-y-0 left-0 z-40 hidden w-[264px]", collapsed ? "lg:hidden" : "lg:block")}
+      >
         <SidebarContent user={user} />
       </aside>
-      <div className="lg:pl-[264px]">
+      <div className={collapsed ? "lg:pl-0" : "lg:pl-[264px]"}>
         <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between gap-4 border-b border-navy-100 bg-white/95 px-4 backdrop-blur sm:px-6">
           <div className="flex items-center gap-3">
             <button
@@ -189,6 +209,15 @@ function AdminShell({ user }: { user: AdminContext["user"] }) {
               aria-label="Открыть меню панели"
             >
               <Menu size={20} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="hidden h-10 w-10 items-center justify-center border border-navy-200 text-graphite-600 hover:bg-mist hover:text-navy-900 lg:flex"
+              onClick={() => setCollapsed((current) => !current)}
+              aria-label={collapsed ? "Показать меню панели" : "Скрыть меню панели"}
+              title={collapsed ? "Показать меню" : "Скрыть меню"}
+            >
+              {collapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
             </button>
             <p className="text-[12px] uppercase tracking-[0.14em] text-graphite-500">
               {user.role === "admin" ? "Администратор" : "Редактор"}
