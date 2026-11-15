@@ -15,6 +15,7 @@ const SCHOOL_LINKS = [
 const LIFE_LINKS = [
   { to: "/novosti", label: "Новости" },
   { to: "/kalendar", label: "Календарь соревнований" },
+  { to: "/planner", label: "Планировщик соревнований" },
   { to: "/rezultaty", label: "Результаты" },
   { to: "/sportsmeny", label: "Спортсмены и достижения" },
   { to: "/fotogalereya", label: "Фотогалерея" },

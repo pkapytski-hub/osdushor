@@ -16,6 +16,7 @@ const NewsPage = lazy(() => import("@/pages/NewsPage"));
 const NewsDetailPage = lazy(() => import("@/pages/NewsDetailPage"));
 const CompetitionsPage = lazy(() => import("@/pages/CompetitionsPage"));
 const CompetitionDetailPage = lazy(() => import("@/pages/CompetitionDetailPage"));
+const PlannerPage = lazy(() => import("@/pages/PlannerPage"));
 const ResultsPage = lazy(() => import("@/pages/ResultsPage"));
 const RatingPage = lazy(() => import("@/pages/RatingPage"));
 const TournamentsPage = lazy(() => import("@/pages/TournamentsPage"));
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="novosti/:slug" element={<NewsDetailPage />} />
             <Route path="kalendar" element={<CompetitionsPage />} />
             <Route path="kalendar/:slug" element={<CompetitionDetailPage />} />
+            <Route path="planner" element={<PlannerPage />} />
             <Route path="rezultaty" element={<ResultsPage />} />
             <Route path="reyting" element={<RatingPage />} />
             <Route path="turniry" element={<TournamentsPage />} />

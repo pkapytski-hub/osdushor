@@ -279,3 +279,11 @@
     transition: none;
   }
 }
+
+/* Планировщик печатает только расчёт: шапка и подвал сайта на бумаге не нужны. */
+@media print {
+  body.planner-print header,
+  body.planner-print footer {
+    display: none !important;
+  }
+}

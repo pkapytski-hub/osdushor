@@ -47,6 +47,7 @@ const NAV: NavItem[] = [
       { label: "Турниры школы", to: "/turniry", description: "Сетки, группы и итоги" },
       { label: "Календарь", to: "/kalendar", description: "Турниры и положения" },
       { label: "Результаты", to: "/rezultaty", description: "Итоги соревнований" },
+      { label: "Планировщик", to: "/planner", description: "Время турнира и расписание" },
     ],
   },
   {
