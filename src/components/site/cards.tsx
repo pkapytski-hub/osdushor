@@ -7,6 +7,7 @@ import {
   MapPin,
   Medal,
   Paperclip,
+  TimerReset,
   Trophy,
   Users,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import {
 import { dayOfMonth, formatDate, formatDateRange, formatFileSize, monthShort, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { fileUrl } from "@/lib/api";
+import { competitionPlannerHref } from "@/lib/planner-link";
 import { DemoBadge } from "./primitives";
 import { GraphicPlaceholder, SmartImage } from "./Media";
 
@@ -71,15 +73,15 @@ export function NewsCard({
   );
 }
 
-export function CompetitionCard({ item, detailed = false }: { item: Competition; detailed?: boolean }) {
+export function CompetitionCard({ item, detailed = false, planner = false }: { item: Competition; detailed?: boolean; planner?: boolean }) {
   const statusStyles = {
     upcoming: "border-navy-300 text-navy-700 bg-white",
     ongoing: "border-accent-600 bg-accent-600 text-white",
     finished: "border-graphite-300 text-graphite-600 bg-white",
   }[item.status];
   return (
-    <article className="card card-hover h-full">
-      <Link to={`/kalendar/${item.slug}`} className="flex h-full flex-col focus-visible:outline-offset-0">
+    <article className="card card-hover flex h-full flex-col">
+      <Link to={`/kalendar/${item.slug}`} className="flex flex-1 flex-col focus-visible:outline-offset-0">
         <div className="flex items-stretch border-b border-navy-100">
           <div className="flex w-20 shrink-0 flex-col items-center justify-center border-r border-navy-100 bg-mist py-4">
             <span className="font-display text-3xl leading-none text-navy-900">{dayOfMonth(item.starts_on)}</span>
@@ -138,6 +140,16 @@ export function CompetitionCard({ item, detailed = false }: { item: Competition;
           </div>
         </div>
       </Link>
+      {planner && (
+        <div className="border-t border-navy-100 px-5 py-3">
+          <Link
+            to={competitionPlannerHref(item)}
+            className="inline-flex items-center gap-1.5 font-display text-[12px] uppercase tracking-[0.14em] text-graphite-600 transition-colors hover:text-accent-600"
+          >
+            <TimerReset size={14} aria-hidden="true" /> Прикинуть время
+          </Link>
+        </div>
+      )}
     </article>
   );
 }

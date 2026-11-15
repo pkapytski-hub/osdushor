@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { CalendarDays, Clock, Plus, Printer, RotateCcw, Table2, TimerReset, Trash2 } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { PageHero } from "@/components/site/PageHero";
 import { cn } from "@/lib/utils";
+import { applyPlannerSeed } from "@/lib/planner-link";
 import {
   calculatePlan,
   DEFAULT_PLANNER_INPUT,
@@ -63,6 +65,7 @@ function mergeInput(raw: unknown): PlannerInput {
     pauseMinutes: Math.max(0, Math.round(numberOr(source.pauseMinutes, base.pauseMinutes))),
     awardsMinutes: Math.max(0, Math.round(numberOr(source.awardsMinutes, base.awardsMinutes))),
     includeGirls: Boolean(source.includeGirls),
+    girlsTables: Math.max(0, Math.round(numberOr(source.girlsTables, base.girlsTables))),
     boys: mergeCategory(source.boys, base.boys),
     girls: mergeCategory(source.girls, base.girls),
   };
@@ -75,6 +78,12 @@ function loadInput(): PlannerInput {
   } catch {
     return DEFAULT_PLANNER_INPUT;
   }
+}
+
+/** Ссылка из турнира или календаря важнее сохранённых настроек: она и есть предзаполнение. */
+function loadInitialInput(): PlannerInput {
+  const base = loadInput();
+  return applyPlannerSeed(base, window.location.search) ?? base;
 }
 
 function Panel({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -156,7 +165,7 @@ function StatCard({ label, value, note, accent = false }: { label: string; value
   return (
     <div
       className={cn(
-        "break-inside-avoid border p-5",
+        "break-inside-avoid border p-5 print:p-3",
         accent ? "border-navy-200 bg-navy-50" : "border-navy-100 bg-white",
       )}
     >
@@ -175,8 +184,15 @@ function StatCard({ label, value, note, accent = false }: { label: string; value
 }
 
 export default function PlannerPage() {
-  const [input, setInput] = useState<PlannerInput>(loadInput);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [input, setInput] = useState<PlannerInput>(loadInitialInput);
   const plan = useMemo(() => calculatePlan(input), [input]);
+
+  // Предзаполнение применяется один раз: дальше правки не перетираются при перезагрузке.
+  useEffect(() => {
+    if (searchParams.size === 0) return;
+    setSearchParams(new URLSearchParams(), { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     try {
@@ -297,7 +313,7 @@ export default function PlannerPage() {
   };
 
   const printTitle = (
-    <div className="mb-6 hidden print:block">
+    <div className="mb-6 hidden print:mb-3 print:block">
       <p className="section-label">Планировщик</p>
       <h1 className="mt-2 font-display text-3xl uppercase text-navy-900">Хронометраж соревнований</h1>
       <p className="mt-1 text-sm text-graphite-600">
@@ -335,7 +351,7 @@ export default function PlannerPage() {
         </PageHero>
       </div>
 
-      <section className="section bg-mist">
+      <section className="section bg-mist print:bg-white print:py-0">
         <div className="container-site">
           {printTitle}
 
@@ -492,7 +508,7 @@ export default function PlannerPage() {
                     checked={input.includeGirls}
                     onChange={(event) => setInput((prev) => ({ ...prev, includeGirls: event.target.checked }))}
                   />
-                  Считать девушек на тех же столах
+                  Девушки играют в тот же день
                 </label>
 
                 {input.includeGirls ? (
@@ -517,17 +533,33 @@ export default function PlannerPage() {
                       />
                     </div>
                     {renderFinals("girls")}
+
+                    <div className="mt-4 border-t border-navy-100 pt-4">
+                      <NumberField
+                        label="Столов девушкам"
+                        value={input.girlsTables}
+                        onChange={(value) => setInput((prev) => ({ ...prev, girlsTables: Math.max(0, value) }))}
+                      />
+                      <p className="mt-2 text-xs leading-relaxed text-graphite-500">
+                        {input.girlsTables > 0
+                          ? `Потоки идут одновременно: девушкам ${input.girlsTables}, юношам ${input.tables - input.girlsTables}. `
+                          : "0 — девушки играют по очереди на всех столах. Укажите число, чтобы вести потоки одновременно. "}
+                        {input.girlsTables > 0 && input.girlsTables >= input.tables
+                          ? "Столов меньше, чем нужно: оставьте юношам хотя бы один."
+                          : ""}
+                      </p>
+                    </div>
                   </>
                 ) : (
                   <p className="text-xs leading-relaxed text-graphite-500">
-                    Отметьте, если девушки играют в тот же день на тех же столах — иначе расчёт идёт только по юношам.
+                    Отметьте, если девушки играют в тот же день — на своих столах или по очереди на общих.
                   </p>
                 )}
               </Panel>
             </div>
           </div>
 
-          <div className="mt-8 space-y-5">
+          <div className="mt-8 space-y-5 print:mt-3 print:space-y-2">
             <div className={cn("border-l-4 px-5 py-4 text-[15px] leading-relaxed", VERDICT_STYLES[plan.verdictTone])}>
               {plan.verdictText}
             </div>
@@ -558,7 +590,8 @@ export default function PlannerPage() {
                 </div>
 
                 <div className="grid gap-5 lg:grid-cols-2">
-                  <section className="break-inside-avoid border border-navy-100 bg-white p-5 sm:p-6">
+                  {plan.groups.length > 0 && (
+                  <section className="break-inside-avoid border border-navy-100 bg-white p-5 sm:p-6 print:p-3">
                     <div className="mb-3 flex items-center gap-2">
                       <Table2 size={16} className="text-accent-600" aria-hidden="true" />
                       <h2 className="font-display text-[13px] font-medium uppercase tracking-[0.16em] text-graphite-500">Групповой этап</h2>
@@ -588,8 +621,9 @@ export default function PlannerPage() {
                       {input.prelimMinutes} мин = {plan.preliminary.minutes} мин.
                     </p>
                   </section>
+                  )}
 
-                  <section className="break-inside-avoid border border-navy-100 bg-white p-5 sm:p-6">
+                  <section className="break-inside-avoid border border-navy-100 bg-white p-5 sm:p-6 print:p-3">
                     <div className="mb-3 flex items-center gap-2">
                       <TimerReset size={16} className="text-accent-600" aria-hidden="true" />
                       <h2 className="font-display text-[13px] font-medium uppercase tracking-[0.16em] text-graphite-500">Финальный этап</h2>
@@ -628,16 +662,16 @@ export default function PlannerPage() {
                   </section>
                 </div>
 
-                <section className="break-inside-avoid border border-navy-100 bg-white p-5 sm:p-6">
-                  <div className="mb-4 flex items-center gap-2">
+                <section className="border border-navy-100 bg-white p-5 sm:p-6 print:p-3">
+                  <div className="mb-4 flex items-center gap-2 print:break-after-avoid">
                     <CalendarDays size={16} className="text-accent-600" aria-hidden="true" />
                     <h2 className="font-display text-[13px] font-medium uppercase tracking-[0.16em] text-graphite-500">
                       {plan.daysUsed > 1 ? "Расписание по дням" : "Расписание дня"}
                     </h2>
                   </div>
-                  <ol className="space-y-1">
+                  <ol className="planner-timeline space-y-1">
                     {plan.timeline.map((day) => (
-                      <li key={day.number} className="break-inside-avoid">
+                      <li key={day.number}>
                         {plan.daysUsed > 1 && (
                           <p className="mt-3 border-b border-navy-100 pb-2 font-display text-[12px] uppercase tracking-[0.12em] text-graphite-500">
                             День {day.number}: {day.window} · финиш {day.finish}
@@ -645,7 +679,7 @@ export default function PlannerPage() {
                         )}
                         <ul className="divide-y divide-navy-50">
                           {day.events.map((event, index) => (
-                            <li key={index} className="flex gap-4 py-2.5">
+                            <li key={index} className="flex gap-4 py-2.5 break-inside-avoid">
                               <span className="w-[118px] shrink-0 tabular-nums text-sm text-graphite-500">
                                 {event.from}–{event.to}
                               </span>

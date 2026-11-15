@@ -280,10 +280,24 @@
   }
 }
 
-/* Планировщик печатает только расчёт: шапка и подвал сайта на бумаге не нужны. */
+/* Планировщик печатает только расчёт: шапка, подвал и ссылка «к содержанию» на бумаге не нужны. */
 @media print {
   body.planner-print header,
-  body.planner-print footer {
+  body.planner-print footer,
+  body.planner-print a[href="#main"] {
     display: none !important;
+  }
+  /* Плотнее: иначе таблица групп не влезает вслед за карточками и уезжает на пустую страницу. */
+  body.planner-print table {
+    font-size: 12px;
+  }
+  body.planner-print th,
+  body.planner-print td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  /* Строки расписания не разрываются между страницами. */
+  body.planner-print .planner-timeline li {
+    break-inside: avoid;
   }
 }

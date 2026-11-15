@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, CalendarDays, Trophy, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, TimerReset, Trophy, Users } from "lucide-react";
 import { Seo } from "@/components/Seo";
 import { PageHero } from "@/components/site/PageHero";
 import { EmptyState, ErrorState, LoadingBlock, Reveal } from "@/components/site/primitives";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { formatDate } from "@/lib/format";
+import { tournamentPlannerHref } from "@/lib/planner-link";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -107,9 +108,16 @@ export default function TournamentsPage() {
                                   {!item.is_finished && <span className="text-xs text-graphite-500">Итоги не подведены</span>}
                                 </div>
                               </div>
-                              <Link to={`/turniry/${item.id}`} className="btn btn-primary btn-sm shrink-0">
-                                Результаты <ArrowRight size={14} aria-hidden="true" />
-                              </Link>
+                              <div className="flex shrink-0 flex-wrap gap-2">
+                                {tournamentPlannerHref(item) && (
+                                  <Link to={tournamentPlannerHref(item) ?? "/planner"} className="btn btn-outline btn-sm">
+                                    <TimerReset size={14} aria-hidden="true" /> Прикинуть время
+                                  </Link>
+                                )}
+                                <Link to={`/turniry/${item.id}`} className="btn btn-primary btn-sm">
+                                  Результаты <ArrowRight size={14} aria-hidden="true" />
+                                </Link>
+                              </div>
                             </div>
                           </article>
                         </Reveal>
