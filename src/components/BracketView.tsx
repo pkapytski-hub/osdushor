@@ -2,7 +2,7 @@ import type { TournamentMatch, TournamentPlayoffRound } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Высота одной «дорожки» сетки: карточка занимает три дорожки. */
-const ROW_HEIGHT = 20;
+const ROW_HEIGHT = 26;
 
 function groupBlocks(rounds: TournamentPlayoffRound[]): TournamentPlayoffRound[][] {
   const blocks: TournamentPlayoffRound[][] = [];
@@ -64,24 +64,24 @@ function MatchCard({
   match,
   places,
   lastMatch,
+  style,
 }: {
   match: TournamentMatch;
   places?: Map<string, number>;
   lastMatch?: Map<string, string>;
+  style?: React.CSSProperties;
 }) {
   const played = match.score_a !== null && match.score_b !== null;
   const placeFor = (id: string): number | null =>
     lastMatch?.get(id) === match.id ? places?.get(id) ?? null : null;
   const rows = [
     {
-      id: match.player_a,
       name: match.player_a_name,
       score: scoreLabel(match, "a"),
       winner: match.winner_id !== null && match.winner_id === match.player_a,
       place: placeFor(match.player_a),
     },
     {
-      id: match.player_b,
       name: match.player_b_name,
       score: scoreLabel(match, "b"),
       winner: match.winner_id !== null && match.winner_id === match.player_b,
@@ -90,9 +90,10 @@ function MatchCard({
   ];
   return (
     <div
+      style={style}
       title={match.tech_loss_a || match.tech_loss_b ? "Техническая победа: соперник отдал встречу" : undefined}
       className={cn(
-        "flex h-full flex-col justify-center gap-0.5 border bg-white px-2",
+        "flex h-full flex-col justify-center gap-1 border bg-white px-3",
         played ? "border-navy-200" : "border-dashed border-navy-100",
       )}
     >
@@ -100,7 +101,7 @@ function MatchCard({
         <div
           key={index}
           className={cn(
-            "flex items-center gap-1.5 text-[11px] leading-tight",
+            "flex items-center gap-2 text-[12px] leading-tight",
             row.winner ? "font-semibold text-navy-900" : played ? "text-graphite-500" : "text-graphite-700",
           )}
         >
@@ -114,7 +115,7 @@ function MatchCard({
               {row.place} место
             </span>
           )}
-          <span className={cn("w-4 shrink-0 text-right font-display tabular-nums", row.winner ? "text-navy-900" : "text-graphite-500")}>
+          <span className={cn("w-5 shrink-0 text-right font-display tabular-nums", row.winner ? "text-navy-900" : "text-graphite-500")}>
             {row.score ?? ""}
           </span>
         </div>
@@ -157,7 +158,7 @@ function BlockBracket({
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `repeat(${block.length}, minmax(160px, 220px))`,
+            gridTemplateColumns: `repeat(${block.length}, minmax(190px, 1fr))`,
             gridTemplateRows: `auto repeat(${rowsCount}, ${ROW_HEIGHT}px)`,
             columnGap: "0.75rem",
             rowGap: "4px",
@@ -178,13 +179,13 @@ function BlockBracket({
               // встреча круга r сдвигается на 2^(r+1) дорожек и занимает три.
               const start = 2 ** (roundIndex + 2) * matchIndex + 2 ** (roundIndex + 1) - 1;
               return (
-                <div
+                <MatchCard
                   key={match.id}
+                  match={match}
+                  places={places}
+                  lastMatch={lastMatch}
                   style={{ gridColumn: roundIndex + 1, gridRow: `${start + 1} / span 3` }}
-                  className="min-h-0"
-                >
-                  <MatchCard match={match} places={places} lastMatch={lastMatch} />
-                </div>
+                />
               );
             }),
           )}
