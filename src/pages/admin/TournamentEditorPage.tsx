@@ -30,6 +30,7 @@ interface Settings {
   coefficient: number;
   notes: string;
   is_published: boolean;
+  show_schedule: boolean;
 }
 
 const EMPTY_SETTINGS: Settings = {
@@ -42,6 +43,7 @@ const EMPTY_SETTINGS: Settings = {
   coefficient: 0.5,
   notes: "",
   is_published: false,
+  show_schedule: false,
 };
 
 /** Какие счёта возможны при разной длине встречи. */
@@ -52,6 +54,7 @@ const BEST_OF_SCORES: Record<number, string> = {
 };
 
 type Scores = Record<string, { a: string; b: string }>;
+type ScheduleDrafts = Record<string, { scheduled_at: string; table_no: string }>;
 
 interface ParsedScore {
   a: number;
@@ -102,6 +105,9 @@ export default function TournamentEditorPage() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scores, setScores] = useState<Scores>({});
+  const [schedule, setSchedule] = useState<ScheduleDrafts>({});
+  // Параметры авторасстановки: начало, столы, длина встречи.
+  const [plan, setPlan] = useState({ start: "10:30", tables: 8, minutes: 15 });
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
@@ -194,6 +200,14 @@ export default function TournamentEditorPage() {
     return numbers;
   }, [callPlan]);
 
+  // Сколько встреч уже имеют время: их перезапись подтверждается отдельно.
+  const scheduleStats = useMemo(() => {
+    const matches = data
+      ? [...data.groups.flatMap((group) => group.matches), ...data.playoff.flatMap((round) => round.matches)]
+      : [];
+    return { total: matches.length, filled: matches.filter((match) => match.scheduled_at).length };
+  }, [data]);
+
   const updateScore = (matchId: string, side: "a" | "b", value: string) =>
     setScores((current) => ({
       ...current,
@@ -224,6 +238,100 @@ export default function TournamentEditorPage() {
     }, called ? "Встреча вызвана" : "Вызов снят");
   };
 
+  const updateSchedule = (matchId: string, field: "scheduled_at" | "table_no", value: string) =>
+    setSchedule((current) => ({
+      ...current,
+      [matchId]: { ...(current[matchId] ?? { scheduled_at: "", table_no: "" }), [field]: value },
+    }));
+
+  const saveSchedule = async (match: TournamentMatch) => {
+    if (!id) return;
+    const draft = schedule[match.id] ?? { scheduled_at: "", table_no: "" };
+    await run(async () => {
+      const response = await api.admin.tournaments.schedule(id, match.id, {
+        scheduled_at: draft.scheduled_at.trim() || null,
+        table_no: draft.table_no.trim() === "" ? null : Number(draft.table_no),
+      });
+      const saved = [
+        ...response.item.groups.flatMap((group) => group.matches),
+        ...response.item.playoff.flatMap((round) => round.matches),
+      ].find((item) => item.id === match.id);
+      if (!saved) return;
+      const patch = { scheduled_at: saved.scheduled_at ?? null, table_no: saved.table_no ?? null };
+      // Обновляем только расписание этой встречи: введённый, но не сохранённый
+      // счёт должен остаться в полях.
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              groups: current.groups.map((group) => ({
+                ...group,
+                matches: group.matches.map((item) => (item.id === match.id ? { ...item, ...patch } : item)),
+              })),
+              playoff: current.playoff.map((round) => ({
+                ...round,
+                matches: round.matches.map((item) => (item.id === match.id ? { ...item, ...patch } : item)),
+              })),
+            }
+          : current,
+      );
+    }, "Расписание сохранено");
+  };
+
+  const generateSchedule = async (overwrite = false) => {
+    if (!id) return;
+    await run(async () => {
+      const response = await api.admin.tournaments.generateSchedule(id, { ...plan, overwrite });
+      const saved = [
+        ...response.item.groups.flatMap((group) => group.matches),
+        ...response.item.playoff.flatMap((round) => round.matches),
+      ];
+      const byId = new Map(saved.map((match) => [match.id, match]));
+      setSchedule((current) => {
+        const next = { ...current };
+        for (const match of saved) {
+          next[match.id] = {
+            scheduled_at: match.scheduled_at ?? "",
+            table_no: match.table_no == null ? "" : String(match.table_no),
+          };
+        }
+        return next;
+      });
+      // Обновляем только расписание: введённый, но не сохранённый счёт
+      // должен остаться в полях.
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              groups: current.groups.map((group) => ({
+                ...group,
+                matches: group.matches.map((match) => {
+                  const savedMatch = byId.get(match.id);
+                  return savedMatch
+                    ? { ...match, scheduled_at: savedMatch.scheduled_at ?? null, table_no: savedMatch.table_no ?? null }
+                    : match;
+                }),
+              })),
+              playoff: current.playoff.map((round) => ({
+                ...round,
+                matches: round.matches.map((match) => {
+                  const savedMatch = byId.get(match.id);
+                  return savedMatch
+                    ? { ...match, scheduled_at: savedMatch.scheduled_at ?? null, table_no: savedMatch.table_no ?? null }
+                    : match;
+                }),
+              })),
+            }
+          : current,
+      );
+      setPlan({
+        start: response.item.tournament.schedule_start,
+        tables: response.item.tournament.schedule_tables,
+        minutes: response.item.tournament.schedule_minutes,
+      });
+    }, "Расписание расставлено");
+  };
+
   const apply = (item: TournamentDetail) => {
     setData(item);
     if (!settingsLoaded) {
@@ -237,12 +345,23 @@ export default function TournamentEditorPage() {
         coefficient: item.tournament.coefficient,
         notes: item.tournament.notes ?? "",
         is_published: item.tournament.is_published,
+        show_schedule: Boolean(item.tournament.show_schedule),
+      });
+      setPlan({
+        start: item.tournament.schedule_start ?? "10:30",
+        tables: item.tournament.schedule_tables ?? 8,
+        minutes: item.tournament.schedule_minutes ?? 15,
       });
       setSettingsLoaded(true);
     }
     setSelected(new Set(item.participants.map((participant) => participant.athlete_id)));
     const next: Scores = {};
+    const nextSchedule: ScheduleDrafts = {};
     for (const match of [...item.groups.flatMap((group) => group.matches), ...item.playoff.flatMap((round) => round.matches)]) {
+      nextSchedule[match.id] = {
+        scheduled_at: match.scheduled_at ?? "",
+        table_no: match.table_no == null ? "" : String(match.table_no),
+      };
       // Техническую победу показываем так же, как её вводят: «w» вместо счёта.
       next[match.id] = match.tech_loss_a
         ? { a: "0", b: "w" }
@@ -254,6 +373,7 @@ export default function TournamentEditorPage() {
             };
     }
     setScores(next);
+    setSchedule(nextSchedule);
   };
 
   const load = async () => {
@@ -625,6 +745,88 @@ export default function TournamentEditorPage() {
             />
             <span className="text-sm text-graphite-700">Опубликовать турнир на сайте</span>
           </label>
+          <label className="flex cursor-pointer items-center gap-3 border border-navy-100 bg-mist px-4 py-3">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-accent-600"
+              checked={settings.show_schedule}
+              onChange={(event) =>
+                setSettings((current) => ({ ...current, show_schedule: event.target.checked }))
+              }
+            />
+            <span className="text-sm text-graphite-700">Расписание: дата, время, стол у встреч</span>
+          </label>
+          {!isNew && !finished && settings.show_schedule && (
+            <div className="sm:col-span-2 border border-navy-100 bg-mist px-4 py-3">
+              <p className="text-sm font-medium text-navy-900">Расставить расписание автоматически</p>
+              <p className="mt-1 text-xs text-graphite-500">
+                Встречи идут по кругам: в одной волне не больше столов и никто не играет две встречи сразу.
+                Время считается от начала, дата — день турнира; что не поместилось, переносится на следующие дни.
+              </p>
+              <p className="mt-2 text-xs font-medium text-navy-900">
+                {scheduleStats.filled > 0
+                  ? `Время уже стоит у ${scheduleStats.filled} из ${scheduleStats.total} встреч. Расстановка перезапишет их — с подтверждением.`
+                  : `Расписание ещё не расставлено: ${scheduleStats.total} встреч без времени.`}
+              </p>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <Field label="Начало" htmlFor="schedule-start">
+                  <TextInput
+                    id="schedule-start"
+                    type="time"
+                    value={plan.start}
+                    onChange={(event) => setPlan((current) => ({ ...current, start: event.target.value }))}
+                    className="!w-28"
+                  />
+                </Field>
+                <Field label="Столов" htmlFor="schedule-tables">
+                  <TextInput
+                    id="schedule-tables"
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={plan.tables}
+                    onChange={(event) =>
+                      setPlan((current) => ({ ...current, tables: Number(event.target.value) || 1 }))
+                    }
+                    className="!w-20"
+                  />
+                </Field>
+                <Field label="Мин на встречу" htmlFor="schedule-minutes">
+                  <TextInput
+                    id="schedule-minutes"
+                    type="number"
+                    min={5}
+                    max={120}
+                    step={5}
+                    value={plan.minutes}
+                    onChange={(event) =>
+                      setPlan((current) => ({ ...current, minutes: Number(event.target.value) || 15 }))
+                    }
+                    className="!w-24"
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={busy || !id}
+                  onClick={() => {
+                    if (scheduleStats.filled > 0) {
+                      setConfirm({
+                        title: "Перезаписать время встреч?",
+                        text: `У ${scheduleStats.filled} из ${scheduleStats.total} встреч уже стоит время — включая возможные ручные правки. Расстановка заново заменит дату, время и стол у всех встреч турнира.`,
+                        label: "Перезаписать",
+                        run: () => generateSchedule(true),
+                      });
+                      return;
+                    }
+                    void generateSchedule();
+                  }}
+                >
+                  <Shuffle size={15} aria-hidden="true" /> Расставить
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
@@ -837,6 +1039,10 @@ export default function TournamentEditorPage() {
                                   winSets={winSetsOfMatch(match, data)}
                                   finished={finished}
                                   busy={busy}
+                                  showSchedule={Boolean(data.tournament.show_schedule)}
+                                  schedule={schedule[match.id] ?? { scheduled_at: "", table_no: "" }}
+                                  onScheduleChange={(field, value) => updateSchedule(match.id, field, value)}
+                                  onSaveSchedule={() => void saveSchedule(match)}
                                   onChange={(side, value) => updateScore(match.id, side, value)}
                                   onSave={() => void saveMatch(match)}
                                   onCall={(called) => void toggleCall(match, called)}
@@ -894,6 +1100,10 @@ export default function TournamentEditorPage() {
                       winSets={round.sets_to_win}
                       finished={finished}
                       busy={busy}
+                      showSchedule={Boolean(data.tournament.show_schedule)}
+                      schedule={schedule[match.id] ?? { scheduled_at: "", table_no: "" }}
+                      onScheduleChange={(field, value) => updateSchedule(match.id, field, value)}
+                      onSaveSchedule={() => void saveSchedule(match)}
                       onChange={(side, value) =>
                         setScores((current) => ({
                           ...current,
@@ -993,6 +1203,10 @@ function MatchRow({
   winSets,
   finished,
   busy,
+  showSchedule,
+  schedule,
+  onScheduleChange,
+  onSaveSchedule,
   onChange,
   onSave,
   onCall,
@@ -1005,6 +1219,11 @@ function MatchRow({
   winSets: number;
   finished: boolean;
   busy: boolean;
+  /** Включён ли у турнира флаг расписания. */
+  showSchedule?: boolean;
+  schedule?: { scheduled_at: string; table_no: string };
+  onScheduleChange?: (field: "scheduled_at" | "table_no", value: string) => void;
+  onSaveSchedule?: () => void;
   onChange: (side: "a" | "b", value: string) => void;
   onSave: () => void;
   /** Вызов встречи на стол; undefined — у встречи нет вызова (плей-офф). */
@@ -1034,8 +1253,11 @@ function MatchRow({
     ? new Date(calledAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
     : "";
   const played = match.score_a !== null && match.score_b !== null;
+  const scheduleDirty =
+    (schedule?.scheduled_at ?? "") !== (match.scheduled_at ?? "") ||
+    (schedule?.table_no ?? "") !== (match.table_no == null ? "" : String(match.table_no));
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-[13px]">
       {typeof number === "number" && (
         <span
           className="w-5 shrink-0 text-center font-display text-[11px] text-graphite-400"
@@ -1072,7 +1294,7 @@ function MatchRow({
             placeholder={String(winSets)}
             title="Выигранные партии. «w» вместо счёта при 0 у соперника — техническая победа."
             className={cn(
-              "field-input !min-h-9 w-14 px-2 py-1 text-center",
+              "field-input !min-h-9 w-14 px-2 py-1 text-center text-[13px]",
               legal && previewWinner === "a" && "border-emerald-600 font-semibold text-emerald-800",
               decided && !legal && "border-accent-600 text-accent-700",
             )}
@@ -1087,7 +1309,7 @@ function MatchRow({
             placeholder={String(winSets)}
             title="Выигранные партии. «w» вместо счёта при 0 у соперника — техническая победа."
             className={cn(
-              "field-input !min-h-9 w-14 px-2 py-1 text-center",
+              "field-input !min-h-9 w-14 px-2 py-1 text-center text-[13px]",
               legal && previewWinner === "b" && "border-emerald-600 font-semibold text-emerald-800",
               decided && !legal && "border-accent-600 text-accent-700",
             )}
@@ -1098,6 +1320,32 @@ function MatchRow({
       <span className={cn("min-w-0 flex-1 truncate", winnerB ? "font-semibold text-navy-900" : "text-graphite-700")}>
         {match.player_b_name}
       </span>
+      {showSchedule && !finished && (
+        <span className="order-last flex w-full items-center justify-center gap-1.5 sm:order-none sm:w-auto">
+          <input
+            type="datetime-local"
+            value={schedule?.scheduled_at ?? ""}
+            onChange={(event) => onScheduleChange?.("scheduled_at", event.target.value)}
+            onBlur={() => scheduleDirty && onSaveSchedule?.()}
+            className="field-input !min-h-9 w-44 px-2 py-1 text-[12px]"
+            title="Дата и время встречи"
+            aria-label={`Дата и время встречи ${match.player_a_name} — ${match.player_b_name}`}
+          />
+          <input
+            type="number"
+            min={1}
+            max={99}
+            inputMode="numeric"
+            value={schedule?.table_no ?? ""}
+            onChange={(event) => onScheduleChange?.("table_no", event.target.value)}
+            onBlur={() => scheduleDirty && onSaveSchedule?.()}
+            placeholder="Стол"
+            className="field-input !min-h-9 w-16 px-2 py-1 text-center text-[12px]"
+            title="Номер стола"
+            aria-label={`Стол встречи ${match.player_a_name} — ${match.player_b_name}`}
+          />
+        </span>
+      )}
       {finished ? (
         <span className="w-28 text-right text-[11px] text-graphite-500">
           {match.delta_a !== null || match.delta_b !== null

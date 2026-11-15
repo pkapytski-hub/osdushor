@@ -259,6 +259,13 @@ CREATE TABLE IF NOT EXISTS tournaments (
   notes TEXT,
   is_published INTEGER NOT NULL DEFAULT 0,
   is_finished INTEGER NOT NULL DEFAULT 0,
+  -- Расписание (дата, время, стол) включается для турнира отдельно:
+  -- на части турниров оно не нужно, и тогда страница выглядит как раньше.
+  show_schedule INTEGER NOT NULL DEFAULT 0,
+  -- Параметры авторасстановки: начало, число столов, длина встречи.
+  schedule_start TEXT NOT NULL DEFAULT '10:30',
+  schedule_tables INTEGER NOT NULL DEFAULT 8,
+  schedule_minutes INTEGER NOT NULL DEFAULT 15,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -304,6 +311,10 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   winner_id TEXT,
   delta_a REAL,
   delta_b REAL,
+  -- Расписание встречи: местные дата и время (ГГГГ-ММ-ДДTЧЧ:ММ) и номер стола.
+  -- Показываются, только если у турнира включён show_schedule.
+  scheduled_at TEXT,
+  table_no INTEGER,
   -- Время вызова встречи на стол; NULL — встреча ещё не вызвана.
   called_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))

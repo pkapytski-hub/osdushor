@@ -286,6 +286,12 @@ export interface Tournament {
   notes: string | null;
   is_published: boolean;
   is_finished: boolean;
+  /** Показывать ли на странице турнира дату, время и стол каждой встречи. */
+  show_schedule: boolean;
+  /** Параметры авторасстановки: начало первой волны, число столов, длина встречи. */
+  schedule_start: string;
+  schedule_tables: number;
+  schedule_minutes: number;
   created_at?: string;
   updated_at?: string;
   participants?: number;
@@ -334,6 +340,10 @@ export interface TournamentMatch {
   winner_id: string | null;
   delta_a: number | null;
   delta_b: number | null;
+  /** Местные дата и время встречи: ГГГГ-ММ-ДДTЧЧ:ММ. */
+  scheduled_at?: string | null;
+  /** Номер стола; null — стол ещё не назначен. */
+  table_no?: number | null;
   /** Когда встречу вызвали на стол (вызов снимается в null). */
   called_at?: string | null;
 }

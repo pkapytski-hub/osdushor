@@ -1,5 +1,6 @@
 import { ApiProblem, bool, fail, int, ok, readJson, str, uuid } from "../lib/http";
 import { audit, type SessionUser } from "../lib/auth";
+import { buildSchedule, parseClock } from "../lib/schedule";
 import {
   allGroupMatchesPlayed,
   bracketRoundLabel,
@@ -41,6 +42,12 @@ interface TournamentRow extends Record<string, unknown> {
   notes: string | null;
   is_published: number;
   is_finished: number;
+  /** Показывать ли на странице турнира дату, время и стол каждой встречи. */
+  show_schedule: number;
+  /** Параметры авторасстановки: начало, число столов, длина встречи. */
+  schedule_start: string;
+  schedule_tables: number;
+  schedule_minutes: number;
 }
 
 interface ParticipantRow extends ParticipantInput {
@@ -53,7 +60,7 @@ interface ParticipantRow extends ParticipantInput {
 interface FullTournament {
   tournament: TournamentRow;
   participants: ParticipantRow[];
-  matches: MatchInput[];
+  matches: (MatchInput & { scheduled_at?: string | null; table_no?: number | null })[];
 }
 
 function mapTournament(row: Record<string, unknown>): TournamentRow {
@@ -72,6 +79,10 @@ function mapTournament(row: Record<string, unknown>): TournamentRow {
     notes: row.notes == null ? null : String(row.notes),
     is_published: Number(row.is_published ?? 0),
     is_finished: Number(row.is_finished ?? 0),
+    show_schedule: Number(row.show_schedule ?? 0),
+    schedule_start: String(row.schedule_start ?? "10:30"),
+    schedule_tables: Number(row.schedule_tables ?? 8),
+    schedule_minutes: Number(row.schedule_minutes ?? 15),
   };
 }
 
@@ -81,6 +92,8 @@ function mapMatch(row: Record<string, unknown>): MatchInput & {
   winner_id: string | null;
   delta_a: number | null;
   delta_b: number | null;
+  scheduled_at: string | null;
+  table_no: number | null;
   called_at: string | null;
 } {
   return {
@@ -102,6 +115,8 @@ function mapMatch(row: Record<string, unknown>): MatchInput & {
     winner_id: row.winner_id == null ? null : String(row.winner_id),
     delta_a: row.delta_a == null ? null : Number(row.delta_a),
     delta_b: row.delta_b == null ? null : Number(row.delta_b),
+    scheduled_at: row.scheduled_at == null ? null : String(row.scheduled_at),
+    table_no: row.table_no == null ? null : Number(row.table_no),
     called_at: row.called_at == null ? null : String(row.called_at),
   };
 }
@@ -460,6 +475,10 @@ export async function handleTournamentsAdmin(
   if (action === "playoff" && method === "POST") return drawPlayoff(env, user, id);
   if (action === "finalize" && method === "POST") return finalizeTournament(env, user, id);
   if (action === "reopen" && method === "POST") return reopenTournament(env, user, id);
+  if (action === "schedule" && method === "POST") return generateSchedule(env, user, id, request);
+  if (action === "matches" && rest[2] && rest[3] === "schedule" && (method === "PATCH" || method === "PUT")) {
+    return updateMatchSchedule(env, user, id, rest[2], request);
+  }
   if (action === "matches" && rest[2] && (method === "PATCH" || method === "PUT")) {
     return updateMatch(env, user, id, rest[2], request);
   }
@@ -527,8 +546,8 @@ async function createTournament(env: Env, user: SessionUser, request: Request): 
   if (Object.keys(errors).length > 0) throw new ApiProblem(400, "validation_failed", "Проверьте данные турнира.", errors);
   const id = uuid();
   await env.DB.prepare(
-    `INSERT INTO tournaments (id, title, held_on, format, group_size, playoff_size, best_of, coefficient, notes, is_published)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tournaments (id, title, held_on, format, group_size, playoff_size, best_of, coefficient, notes, is_published, show_schedule)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -541,6 +560,7 @@ async function createTournament(env: Env, user: SessionUser, request: Request): 
       values.coefficient,
       values.notes,
       bool(body.is_published) ? 1 : 0,
+      bool(body.show_schedule) ? 1 : 0,
     )
     .run();
   await audit(env, user, "create", "tournament", id, str(values.title, 120));
@@ -565,7 +585,7 @@ async function updateTournament(env: Env, user: SessionUser, id: string, request
     Number(values.best_of) !== tournament.best_of;
   await env.DB.prepare(
     `UPDATE tournaments SET title = ?, held_on = ?, format = ?, group_size = ?, playoff_size = ?, best_of = ?,
-       coefficient = ?, notes = ?, is_published = ?, updated_at = datetime('now') WHERE id = ?`,
+       coefficient = ?, notes = ?, is_published = ?, show_schedule = ?, updated_at = datetime('now') WHERE id = ?`,
   )
     .bind(
       values.title,
@@ -577,6 +597,7 @@ async function updateTournament(env: Env, user: SessionUser, id: string, request
       values.coefficient,
       values.notes,
       bool(body.is_published) ? 1 : 0,
+      bool(body.show_schedule) ? 1 : 0,
       id,
     )
     .run();
@@ -791,6 +812,133 @@ async function updateMatch(
   }
   await saveScores(env, id, matchId, scoreA, scoreB, tournament.format, techLossA, techLossB);
   await audit(env, user, "update", "tournament_match", matchId, `${scoreA ?? "—"}:${scoreB ?? "—"}`);
+  const updated = await loadTournament(env, id);
+  return ok({ item: updated ? await tournamentView(env, updated) : null });
+}
+
+/**
+ * Расписание встречи: местные дата и время и номер стола. Оба поля
+ * необязательные — пустое значение снимает их. Расписание можно готовить
+ * и при выключенном флаге турнира: оно сохранится и не удаляется.
+ */
+async function updateMatchSchedule(
+  env: Env,
+  user: SessionUser,
+  id: string,
+  matchId: string,
+  request: Request,
+): Promise<Response> {
+  const existing = await env.DB.prepare("SELECT is_finished FROM tournaments WHERE id = ?")
+    .bind(id)
+    .first<{ is_finished: number }>();
+  if (!existing) return fail(404, "not_found", "Турнир не найден.");
+  if (existing.is_finished) {
+    return fail(409, "tournament_finished", "Итоги турнира уже подведены. Сначала отмените итоги.");
+  }
+  const target = await env.DB.prepare("SELECT id FROM tournament_matches WHERE id = ? AND tournament_id = ?")
+    .bind(matchId, id)
+    .first();
+  if (!target) return fail(404, "not_found", "Встреча не найдена.");
+
+  const body = await readJson(request);
+  const rawSchedule = body.scheduled_at;
+  let scheduledAt: string | null = null;
+  if (rawSchedule !== null && rawSchedule !== undefined && String(rawSchedule).trim() !== "") {
+    const value = str(rawSchedule, 20).trim();
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) || Number.isNaN(new Date(value).getTime())) {
+      return fail(400, "invalid_schedule", "Дата и время: ГГГГ-ММ-ДДTЧЧ:ММ.", {
+        scheduled_at: "Укажите дату и время.",
+      });
+    }
+    scheduledAt = value;
+  }
+
+  const rawTable = body.table_no;
+  let tableNo: number | null = null;
+  if (rawTable !== null && rawTable !== undefined && String(rawTable).trim() !== "") {
+    tableNo = int(rawTable, 0);
+    if (tableNo < 1 || tableNo > 99) {
+      return fail(400, "invalid_table", "Номер стола: от 1 до 99.", { table_no: "От 1 до 99." });
+    }
+  }
+
+  await env.DB.prepare(
+    "UPDATE tournament_matches SET scheduled_at = ?, table_no = ? WHERE id = ? AND tournament_id = ?",
+  )
+    .bind(scheduledAt, tableNo, matchId, id)
+    .run();
+  await audit(env, user, "update", "tournament_match", matchId, "расписание");
+  const updated = await loadTournament(env, id);
+  return ok({ item: updated ? await tournamentView(env, updated) : null });
+}
+
+/**
+ * Автоматическая расстановка расписания: все встречи турнира раскладываются
+ * по волнам — круг за кругом, не больше столов одновременно и без участника
+ * на двух столах сразу. Параметры сохраняются в турнире, чтобы следующий
+ * пересчёт начинался с тех же цифр.
+ */
+async function generateSchedule(
+  env: Env,
+  user: SessionUser,
+  id: string,
+  request: Request,
+): Promise<Response> {
+  const data = await loadTournament(env, id);
+  if (!data) return fail(404, "not_found", "Турнир не найден.");
+  checkTournamentEditable(data.tournament);
+  if (data.matches.length === 0) {
+    return fail(400, "no_matches", "Сначала проведите жеребьёвку: без встреч расписание нечего расставлять.");
+  }
+
+  const body = await readJson(request);
+  // Уже расставленное расписание не перезаписываем без явного подтверждения:
+  // в нём могут быть ручные правки отдельных встреч.
+  const overwrite = bool(body.overwrite);
+  const withTime = data.matches.filter((match) => match.scheduled_at).length;
+  if (withTime > 0 && !overwrite) {
+    return fail(
+      409,
+      "schedule_exists",
+      `У ${withTime} встреч уже стоит время. Подтвердите перезапись: ручные правки будут потеряны.`,
+      { overwrite: "Нужно подтверждение перезаписи." },
+    );
+  }
+  const startRaw = str(body.start, 8).trim();
+  const tables = int(body.tables, 8);
+  const minutes = int(body.minutes, 15);
+  const start = parseClock(startRaw);
+  if (start === null) {
+    return fail(400, "invalid_schedule", "Начало: время в формате ЧЧ:ММ.", { start: "Например, 10:30." });
+  }
+  if (tables < 1 || tables > 30) {
+    return fail(400, "invalid_schedule", "Столов: от 1 до 30.", { tables: "От 1 до 30." });
+  }
+  if (minutes < 5 || minutes > 120) {
+    return fail(400, "invalid_schedule", "Длина встречи: от 5 до 120 минут.", {
+      minutes: "От 5 до 120 минут.",
+    });
+  }
+
+  const schedule = buildSchedule(data.matches, {
+    date: data.tournament.held_on,
+    start: startRaw,
+    tables,
+    minutes,
+  });
+  const statements = [
+    ...schedule.map((slot) =>
+      env.DB.prepare(
+        "UPDATE tournament_matches SET scheduled_at = ?, table_no = ? WHERE id = ? AND tournament_id = ?",
+      ).bind(slot.scheduled_at, slot.table_no, slot.id, id),
+    ),
+    env.DB.prepare(
+      `UPDATE tournaments SET schedule_start = ?, schedule_tables = ?, schedule_minutes = ?,
+         updated_at = datetime('now') WHERE id = ?`,
+    ).bind(startRaw, tables, minutes, id),
+  ];
+  await env.DB.batch(statements);
+  await audit(env, user, "update", "tournament_schedule", id, `${schedule.length} встреч`);
   const updated = await loadTournament(env, id);
   return ok({ item: updated ? await tournamentView(env, updated) : null });
 }

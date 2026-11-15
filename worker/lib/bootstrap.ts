@@ -46,6 +46,32 @@ export async function ensureSchema(env: Env): Promise<void> {
       } catch {
         /* колонка уже есть */
       }
+      // Расписание турнира: включается флагом, у встречи — дата/время и стол.
+      try {
+        await env.DB.prepare("ALTER TABLE tournaments ADD COLUMN show_schedule INTEGER NOT NULL DEFAULT 0").run();
+      } catch {
+        /* колонка уже есть */
+      }
+      // Параметры авторасстановки расписания: во сколько начинается первый
+      // круг, сколько столов и сколько минут длится встреча.
+      for (const column of [
+        "schedule_start TEXT NOT NULL DEFAULT '10:30'",
+        "schedule_tables INTEGER NOT NULL DEFAULT 8",
+        "schedule_minutes INTEGER NOT NULL DEFAULT 15",
+      ]) {
+        try {
+          await env.DB.prepare(`ALTER TABLE tournaments ADD COLUMN ${column}`).run();
+        } catch {
+          /* колонка уже есть */
+        }
+      }
+      for (const column of ["scheduled_at TEXT", "table_no INTEGER"]) {
+        try {
+          await env.DB.prepare(`ALTER TABLE tournament_matches ADD COLUMN ${column}`).run();
+        } catch {
+          /* колонка уже есть */
+        }
+      }
       // Блок сетки (1–2, 3–4, 5–8, 9–16 …) появился вместе с розыгрышем всех
       // мест в олимпийской системе.
       for (const column of ["place_from", "place_to"]) {

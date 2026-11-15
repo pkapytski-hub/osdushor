@@ -243,6 +243,16 @@ export const api = {
           "POST",
           { called },
         ),
+      /** Дата/время и стол встречи; null снимает значение. */
+      schedule: (id: string, matchId: string, payload: { scheduled_at: string | null; table_no: number | null }) =>
+        mutate<{ item: TournamentDetail }>(
+          `/api/admin/tournaments/${id}/matches/${matchId}/schedule`,
+          "PATCH",
+          payload,
+        ),
+      /** Расставляет дату, время и столы всех встреч по волнам. */
+      generateSchedule: (id: string, payload: { start: string; tables: number; minutes: number; overwrite?: boolean }) =>
+        mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/schedule`, "POST", payload),
       finalize: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/finalize`, "POST"),
       reopen: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/reopen`, "POST"),
     },
