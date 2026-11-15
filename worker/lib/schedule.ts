@@ -50,7 +50,7 @@ export function parseClock(value: string): number | null {
 }
 
 /** Минуты от полуночи → «10:30». */
-export function formatClock(total: number): string {
+function formatClock(total: number): string {
   const minutes = ((Math.round(total) % 1440) + 1440) % 1440;
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 }
@@ -63,10 +63,10 @@ function addDays(date: string, days: number): string {
 }
 
 /** Время начала волны: волны идут подряд, через сутки — следующий день. */
-function slotTime(options: ScheduleOptions, startMinutes: number, wave: number): string {
-  const total = startMinutes + wave * options.minutes;
+function slotTime(date: string, minutes: number, startMinutes: number, wave: number): string {
+  const total = startMinutes + wave * minutes;
   const day = Math.floor(total / 1440);
-  return `${addDays(options.date, day)}T${formatClock(total)}`;
+  return `${addDays(date, day)}T${formatClock(total)}`;
 }
 
 function overlaps(left: ScheduleMatch, right: ScheduleMatch): boolean {
@@ -84,8 +84,8 @@ function overlaps(left: ScheduleMatch, right: ScheduleMatch): boolean {
  */
 export function buildSchedule(matches: ScheduleMatch[], options: ScheduleOptions): ScheduledMatch[] {
   const startMinutes = parseClock(options.start) ?? 630;
-  const tables = Math.max(1, Math.round(options.tables || 1));
-  const minutes = Math.max(1, Math.round(options.minutes || 1));
+  const tables = Math.max(1, Math.round(options.tables));
+  const minutes = Math.max(1, Math.round(options.minutes));
 
   const groups = matches
     .filter((match) => match.stage === "group")
@@ -131,7 +131,7 @@ export function buildSchedule(matches: ScheduleMatch[], options: ScheduleOptions
     const spot = placed.get(match.id) ?? { wave: 0, table: 1 };
     return {
       id: match.id,
-      scheduled_at: slotTime({ date: options.date, start: options.start, tables, minutes }, startMinutes, spot.wave),
+      scheduled_at: slotTime(options.date, minutes, startMinutes, spot.wave),
       table_no: spot.table,
     };
   });

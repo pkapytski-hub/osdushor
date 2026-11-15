@@ -329,6 +329,15 @@ function checkTournamentEditable(tournament: TournamentRow): void {
   }
 }
 
+/** Турнир существует и ещё не завершён: встречи можно менять. */
+async function assertTournamentEditable(env: Env, id: string): Promise<void> {
+  const row = await env.DB.prepare("SELECT * FROM tournaments WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) throw new ApiProblem(404, "not_found", "Турнир не найден.");
+  checkTournamentEditable(mapTournament(row));
+}
+
 /**
  * Приводит сетку олимпийской системы к текущим результатам: добавляет новые
  * пары и удаляет встречи, которые перестали ей соответствовать.
@@ -828,13 +837,7 @@ async function updateMatchSchedule(
   matchId: string,
   request: Request,
 ): Promise<Response> {
-  const existing = await env.DB.prepare("SELECT is_finished FROM tournaments WHERE id = ?")
-    .bind(id)
-    .first<{ is_finished: number }>();
-  if (!existing) return fail(404, "not_found", "Турнир не найден.");
-  if (existing.is_finished) {
-    return fail(409, "tournament_finished", "Итоги турнира уже подведены. Сначала отмените итоги.");
-  }
+  await assertTournamentEditable(env, id);
   const target = await env.DB.prepare("SELECT id FROM tournament_matches WHERE id = ? AND tournament_id = ?")
     .bind(matchId, id)
     .first();
@@ -955,13 +958,7 @@ async function callMatch(
   matchId: string,
   request: Request,
 ): Promise<Response> {
-  const existing = await env.DB.prepare("SELECT is_finished FROM tournaments WHERE id = ?")
-    .bind(id)
-    .first<{ is_finished: number }>();
-  if (!existing) return fail(404, "not_found", "Турнир не найден.");
-  if (existing.is_finished) {
-    return fail(409, "tournament_finished", "Итоги турнира уже подведены. Сначала отмените итоги.");
-  }
+  await assertTournamentEditable(env, id);
   const target = await env.DB.prepare("SELECT id FROM tournament_matches WHERE id = ? AND tournament_id = ?")
     .bind(matchId, id)
     .first();

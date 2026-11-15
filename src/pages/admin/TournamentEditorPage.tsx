@@ -56,6 +56,24 @@ const BEST_OF_SCORES: Record<number, string> = {
 type Scores = Record<string, { a: string; b: string }>;
 type ScheduleDrafts = Record<string, { scheduled_at: string; table_no: string }>;
 
+/** Все встречи турнира одним списком: групповые и плей-офф. */
+function flattenMatches(item: TournamentDetail): TournamentMatch[] {
+  return [...item.groups.flatMap((group) => group.matches), ...item.playoff.flatMap((round) => round.matches)];
+}
+
+/** Меняет только время и стол встреч, не трогая введённый, но не сохранённый счёт. */
+function withSavedSchedule(current: TournamentDetail, saved: Map<string, TournamentMatch>): TournamentDetail {
+  const patch = (match: TournamentMatch) => {
+    const slot = saved.get(match.id);
+    return slot ? { ...match, scheduled_at: slot.scheduled_at ?? null, table_no: slot.table_no ?? null } : match;
+  };
+  return {
+    ...current,
+    groups: current.groups.map((group) => ({ ...group, matches: group.matches.map(patch) })),
+    playoff: current.playoff.map((round) => ({ ...round, matches: round.matches.map(patch) })),
+  };
+}
+
 interface ParsedScore {
   a: number;
   b: number;
@@ -117,10 +135,7 @@ export default function TournamentEditorPage() {
   const previewScores = useMemo(() => {
     const result = new Map<string, ParsedScore>();
     if (!data) return result;
-    for (const match of [
-      ...data.groups.flatMap((group) => group.matches),
-      ...data.playoff.flatMap((round) => round.matches),
-    ]) {
+    for (const match of flattenMatches(data)) {
       const values = scores[match.id];
       if (!values) continue;
       const parsed = parseScoreEntry(values, winSetsOfMatch(match, data));
@@ -131,10 +146,7 @@ export default function TournamentEditorPage() {
 
   const previewGroups = useMemo(() => {
     if (!data) return [] as { group_no: number; rows: TournamentStanding[] }[];
-    const matches: MatchInput[] = [
-      ...data.groups.flatMap((group) => group.matches),
-      ...data.playoff.flatMap((round) => round.matches),
-    ].map((match) => {
+    const matches: MatchInput[] = flattenMatches(data).map((match) => {
       const typed = previewScores.get(match.id);
       return {
         id: match.id,
@@ -202,9 +214,7 @@ export default function TournamentEditorPage() {
 
   // Сколько встреч уже имеют время: их перезапись подтверждается отдельно.
   const scheduleStats = useMemo(() => {
-    const matches = data
-      ? [...data.groups.flatMap((group) => group.matches), ...data.playoff.flatMap((round) => round.matches)]
-      : [];
+    const matches = data ? flattenMatches(data) : [];
     return { total: matches.length, filled: matches.filter((match) => match.scheduled_at).length };
   }, [data]);
 
@@ -252,29 +262,9 @@ export default function TournamentEditorPage() {
         scheduled_at: draft.scheduled_at.trim() || null,
         table_no: draft.table_no.trim() === "" ? null : Number(draft.table_no),
       });
-      const saved = [
-        ...response.item.groups.flatMap((group) => group.matches),
-        ...response.item.playoff.flatMap((round) => round.matches),
-      ].find((item) => item.id === match.id);
+      const saved = flattenMatches(response.item).find((item) => item.id === match.id);
       if (!saved) return;
-      const patch = { scheduled_at: saved.scheduled_at ?? null, table_no: saved.table_no ?? null };
-      // Обновляем только расписание этой встречи: введённый, но не сохранённый
-      // счёт должен остаться в полях.
-      setData((current) =>
-        current
-          ? {
-              ...current,
-              groups: current.groups.map((group) => ({
-                ...group,
-                matches: group.matches.map((item) => (item.id === match.id ? { ...item, ...patch } : item)),
-              })),
-              playoff: current.playoff.map((round) => ({
-                ...round,
-                matches: round.matches.map((item) => (item.id === match.id ? { ...item, ...patch } : item)),
-              })),
-            }
-          : current,
-      );
+      setData((current) => (current ? withSavedSchedule(current, new Map([[saved.id, saved]])) : current));
     }, "Расписание сохранено");
   };
 
@@ -282,48 +272,17 @@ export default function TournamentEditorPage() {
     if (!id) return;
     await run(async () => {
       const response = await api.admin.tournaments.generateSchedule(id, { ...plan, overwrite });
-      const saved = [
-        ...response.item.groups.flatMap((group) => group.matches),
-        ...response.item.playoff.flatMap((round) => round.matches),
-      ];
+      const saved = flattenMatches(response.item);
       const byId = new Map(saved.map((match) => [match.id, match]));
-      setSchedule((current) => {
-        const next = { ...current };
-        for (const match of saved) {
-          next[match.id] = {
-            scheduled_at: match.scheduled_at ?? "",
-            table_no: match.table_no == null ? "" : String(match.table_no),
-          };
-        }
-        return next;
-      });
-      // Обновляем только расписание: введённый, но не сохранённый счёт
-      // должен остаться в полях.
-      setData((current) =>
-        current
-          ? {
-              ...current,
-              groups: current.groups.map((group) => ({
-                ...group,
-                matches: group.matches.map((match) => {
-                  const savedMatch = byId.get(match.id);
-                  return savedMatch
-                    ? { ...match, scheduled_at: savedMatch.scheduled_at ?? null, table_no: savedMatch.table_no ?? null }
-                    : match;
-                }),
-              })),
-              playoff: current.playoff.map((round) => ({
-                ...round,
-                matches: round.matches.map((match) => {
-                  const savedMatch = byId.get(match.id);
-                  return savedMatch
-                    ? { ...match, scheduled_at: savedMatch.scheduled_at ?? null, table_no: savedMatch.table_no ?? null }
-                    : match;
-                }),
-              })),
-            }
-          : current,
+      setSchedule(
+        Object.fromEntries(
+          saved.map((match) => [
+            match.id,
+            { scheduled_at: match.scheduled_at ?? "", table_no: match.table_no == null ? "" : String(match.table_no) },
+          ]),
+        ),
       );
+      setData((current) => (current ? withSavedSchedule(current, byId) : current));
       setPlan({
         start: response.item.tournament.schedule_start,
         tables: response.item.tournament.schedule_tables,
@@ -357,7 +316,7 @@ export default function TournamentEditorPage() {
     setSelected(new Set(item.participants.map((participant) => participant.athlete_id)));
     const next: Scores = {};
     const nextSchedule: ScheduleDrafts = {};
-    for (const match of [...item.groups.flatMap((group) => group.matches), ...item.playoff.flatMap((round) => round.matches)]) {
+    for (const match of flattenMatches(item)) {
       nextSchedule[match.id] = {
         scheduled_at: match.scheduled_at ?? "",
         table_no: match.table_no == null ? "" : String(match.table_no),
@@ -531,9 +490,7 @@ export default function TournamentEditorPage() {
   }
 
   const finished = Boolean(data?.tournament.is_finished);
-  const allMatches = data
-    ? [...data.groups.flatMap((group) => group.matches), ...data.playoff.flatMap((round) => round.matches)]
-    : [];
+  const allMatches = data ? flattenMatches(data) : [];
   const leagueOfAthlete = new Map<string, number | null>();
   for (const participant of data?.participants ?? []) {
     leagueOfAthlete.set(participant.athlete_id, participant.league);
@@ -1220,10 +1177,10 @@ function MatchRow({
   finished: boolean;
   busy: boolean;
   /** Включён ли у турнира флаг расписания. */
-  showSchedule?: boolean;
-  schedule?: { scheduled_at: string; table_no: string };
-  onScheduleChange?: (field: "scheduled_at" | "table_no", value: string) => void;
-  onSaveSchedule?: () => void;
+  showSchedule: boolean;
+  schedule: { scheduled_at: string; table_no: string };
+  onScheduleChange: (field: "scheduled_at" | "table_no", value: string) => void;
+  onSaveSchedule: () => void;
   onChange: (side: "a" | "b", value: string) => void;
   onSave: () => void;
   /** Вызов встречи на стол; undefined — у встречи нет вызова (плей-офф). */
@@ -1254,8 +1211,8 @@ function MatchRow({
     : "";
   const played = match.score_a !== null && match.score_b !== null;
   const scheduleDirty =
-    (schedule?.scheduled_at ?? "") !== (match.scheduled_at ?? "") ||
-    (schedule?.table_no ?? "") !== (match.table_no == null ? "" : String(match.table_no));
+    schedule.scheduled_at !== (match.scheduled_at ?? "") ||
+    schedule.table_no !== (match.table_no == null ? "" : String(match.table_no));
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-[13px]">
       {typeof number === "number" && (
@@ -1324,9 +1281,9 @@ function MatchRow({
         <span className="order-last flex w-full items-center justify-center gap-1.5 sm:order-none sm:w-auto">
           <input
             type="datetime-local"
-            value={schedule?.scheduled_at ?? ""}
-            onChange={(event) => onScheduleChange?.("scheduled_at", event.target.value)}
-            onBlur={() => scheduleDirty && onSaveSchedule?.()}
+            value={schedule.scheduled_at}
+            onChange={(event) => onScheduleChange("scheduled_at", event.target.value)}
+            onBlur={() => scheduleDirty && onSaveSchedule()}
             className="field-input !min-h-9 w-44 px-2 py-1 text-[12px]"
             title="Дата и время встречи"
             aria-label={`Дата и время встречи ${match.player_a_name} — ${match.player_b_name}`}
@@ -1336,9 +1293,9 @@ function MatchRow({
             min={1}
             max={99}
             inputMode="numeric"
-            value={schedule?.table_no ?? ""}
-            onChange={(event) => onScheduleChange?.("table_no", event.target.value)}
-            onBlur={() => scheduleDirty && onSaveSchedule?.()}
+            value={schedule.table_no}
+            onChange={(event) => onScheduleChange("table_no", event.target.value)}
+            onBlur={() => scheduleDirty && onSaveSchedule()}
             placeholder="Стол"
             className="field-input !min-h-9 w-16 px-2 py-1 text-center text-[12px]"
             title="Номер стола"
