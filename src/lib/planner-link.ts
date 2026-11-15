@@ -1,4 +1,5 @@
 import { FINAL_SYSTEMS, type CategoryInput, type FinalSetting, type PlannerInput } from "./competition-timing";
+import { splitIntoPlayoffs } from "./competition-format";
 import { parseDate } from "./format";
 import type { Competition, Tournament } from "./types";
 
@@ -120,23 +121,6 @@ export function tournamentPlannerHref(item: Tournament): string | null {
     tables: groups > 0 ? groups : undefined,
     boys: { participants, groups, extra: 0, finals },
   });
-}
-
-/**
- * Делит участников на несколько сеток размера плей-офф без остатка:
- * 29 и плей-офф на 8 — это 8, 7, 7, 7, а не 8 и «осталось 21».
- */
-function splitIntoPlayoffs(participants: number, playoffSize: number): FinalSetting[] {
-  const size = Math.max(2, Math.min(participants, Math.round(playoffSize) || participants));
-  let grids = Math.max(1, Math.ceil(participants / size));
-  // Сетка из одного человека не нужна — лучше одна сетка чуть больше плей-офф.
-  while (grids > 1 && Math.floor(participants / grids) < 2) grids -= 1;
-  const base = Math.floor(participants / grids);
-  const bigger = participants % grids;
-  return Array.from({ length: grids }, (_, index) => ({
-    system: "ko1" as const,
-    size: index < bigger ? base + 1 : base,
-  }));
 }
 
 function dateSpan(startsOn: string, endsOn: string | null): number {

@@ -231,15 +231,38 @@ function roundStage(sizes: number[], tables: number): { slots: number; matches: 
   return { slots, matches, rounds: maxRounds };
 }
 
+/** Полная сетка на size мест с розыгрышем всех мест: каждому ровно level матчей. */
+function fullBracket(size: number): number {
+  const levels = Math.round(Math.log(size) / Math.LN2);
+  return (size * levels) / 2;
+}
+
+/**
+ * Матчи олимпийской системы с розыгрышем всех мест.
+ *
+ * В первом круге играют только пары, где есть оба участника — их
+ * size − base/2; остальные проходят без соперника. Победители и прошедшие
+ * образуют полную сетку на base/2, а проигравшие — такой же турнир за места
+ * ниже. Поэтому нельзя вычитать по раунду за каждого отсутствующего: при 17
+ * участниках из 32 мест так остаётся 5 матчей вместо 33.
+ */
+function bracketMatches(size: number): number {
+  if (size < 2) return 0;
+  let base = 2;
+  while (base < size) base *= 2;
+  const half = base / 2;
+  const playIn = Math.max(0, size - half);
+  return playIn + fullBracket(half) + bracketMatches(playIn);
+}
+
 /** Олимпийская система: −1 — все места, −2 — с дополнительной сеткой. */
 function olympicMatches(size: number, type: "-1" | "-2"): number {
-  if (size < 2) return 0;
-  let base = 4;
+  const matches = bracketMatches(size);
+  if (type === "-1") return matches;
+  let base = 2;
   while (base < size) base *= 2;
-  const levels = Math.round(Math.log(base) / Math.LN2);
-  const total = type === "-2" ? (base * (levels + 1)) / 2 - 2 : (base * levels) / 2;
-  const deducted = (type === "-2" ? levels + 1 : levels) * (base - size);
-  return Math.max(1, Math.round(total - deducted));
+  // Нижняя сетка на полном составе добавляет base/2 − 2 матчей.
+  return matches + Math.max(0, base / 2 - 2);
 }
 
 function koStage(items: { size: number; type: "-1" | "-2" }[], tables: number): { matches: number; rounds: number; slots: number } {
