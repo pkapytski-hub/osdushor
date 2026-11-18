@@ -4,6 +4,7 @@
  *
  *   node scripts/import-protocol.mjs                      # папка protocols/, только отчёт
  *   node scripts/import-protocol.mjs --write              # записать в рабочую базу
+ *   node scripts/import-protocol.mjs --all                # отчёт по всем папкам из карты
  *   node scripts/import-protocol.mjs "protocols/2026.01.10 ОСДЮШОР 2007"
  *   node scripts/import-protocol.mjs --local              # сверяться с локальной базой
  *   node scripts/import-protocol.mjs --competition=<id|slug>
@@ -32,8 +33,10 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findCover, uploadCover } from "./lib/covers.mjs";
+import { readMap } from "./lib/protocol-map.mjs";
 import { readSheets } from "./lib/xlsx.mjs";
 
 const argList = process.argv.slice(2);
@@ -73,22 +76,50 @@ const normalize = (value) =>
     .replace(/[^a-zа-я0-9іїє]+/gi, " ")
     .trim();
 
-/** Места из листа «Финальный этап»: имя в колонке 3, место — в колонке 31. */
+/**
+ * Места из листа «Финальный этап»: блоки «Места 1-8», «9-16» баранкой.
+ *
+ * В старых протоколах место всегда в 31-й колонке, в новых (ПГО, ОП ОСДЮШОР)
+ * — в последней колонке таблицы без заголовка. Поэтому колонку ищем по данным:
+ * значения должны быть целыми внутри объявленного диапазона и не повторяться.
+ */
 function readFinalStage(rows) {
-  let block = "";
   const entries = [];
+  let block = null;
+
+  const readBlock = () => {
+    if (!block || block.lines.length === 0) return;
+    const { from, to, lines } = block;
+    let placeCol = -1;
+    for (let index = 2; index < Math.max(...lines.map((line) => line.cells.length)); index += 1) {
+      const places = lines.map((line) => numberCell(line.cells[index]));
+      if (places.some((place) => place === null || place < from || place > to)) continue;
+      if (new Set(places).size !== places.length) continue;
+      placeCol = index;
+    }
+    if (placeCol < 0) return;
+    for (const line of lines) {
+      entries.push({ name: line.name, place: numberCell(line.cells[placeCol]), block: `${from}-${to}` });
+    }
+  };
+
   for (const row of rows) {
-    const first = String(row[0] ?? "");
-    const blockMatch = BLOCK.exec(first);
+    // Подпись блока может стоять в любой колонке: в «мальчики.xlsx» она в второй.
+    const blockMatch = row.map((cell) => BLOCK.exec(String(cell ?? ""))).find(Boolean);
     if (blockMatch) {
-      block = `${blockMatch[1]}-${blockMatch[2]}`;
+      readBlock();
+      block = { from: Number(blockMatch[1]), to: Number(blockMatch[2]), lines: [] };
       continue;
     }
-    const name = cleanName(row[2]);
-    const placeText = String(row[30] ?? "");
-    if (!NAME.test(name) || !/^\d{1,3}$/.test(placeText)) continue;
-    entries.push({ name, place: Number(placeText), block });
+    if (!block) continue;
+    // Строка участника начинается с номера: так отсекается шапка «№ | Фамилия Имя».
+    if (numberCell(row[0]) === null) continue;
+    // Имя — в первой колонке после номера; строки матчей без имени пропускаем.
+    const nameIndex = [1, 2].find((index) => NAME.test(cleanName(row[index])));
+    if (nameIndex === undefined) continue;
+    block.lines.push({ name: cleanName(row[nameIndex]), cells: row });
   }
+  readBlock();
   return entries;
 }
 
@@ -325,85 +356,122 @@ function readPlaceCaptions(rows, sheetTitle) {
 }
 
 /**
+ * Пол из имени листа или файла: кроме «Юноши»/«Девушки» встречаются
+ * «юн фин», «дев пары», «мал финалы», «мальчики», «девочки».
+ *
+ * Граница слова задана явно: \b в JS считает словом только латиницу и цифры,
+ * поэтому с кириллицей «\bдев» не совпадает никогда.
+ */
+function sheetGenderOf(title) {
+  const direct = genderOf(title);
+  if (direct) return direct;
+  const text = String(title ?? "").toLowerCase();
+  // Длинные основы — без правой границы («мальчики», «девочки»), одиночные
+  // «м»/«ж» — только целым словом: «м 2015 ф».
+  if (/(^|[^а-яё])(дев|девочк)/.test(text) || /(^|[^а-яё])ж(?=[^а-яё]|$)/.test(text)) return "f";
+  if (/(^|[^а-яё])(юн|мал|мальчик)/.test(text) || /(^|[^а-яё])м(?=[^а-яё]|$)/.test(text)) return "m";
+  return "";
+}
+
+/**
  * Один xlsx может содержать несколько финальных этапов: юноши 1-8, девушки 1-8,
  * сетки утешения 9-19 — поэтому возвращаем список блоков.
  */
 function readProtocol(path) {
   const sheets = readSheets(path);
   const blocks = [];
+  const problems = [];
   const dateCell = sheets
     .flatMap((sheet) => sheet.rows.flat())
     .map((cell) => String(cell ?? ""))
     .find((cell) => /\b\d{1,2}\s+\S+\s+\d{4}/.test(cell));
 
+  // Один лист не должен отменять остальные: в файле рядом с одиночными финалами
+  // часто лежат пары и микст, где пол не написан.
   for (const sheet of sheets) {
-    // Финальная таблица с колонкой «Место» читается первой: в ней номер
-    // участника в столбце B, и старый разбор принял бы его за место.
-    const placed = readPlacedFinals(sheet.rows, sheet.title);
-    if (placed.length > 0) {
-      for (const block of placed) blocks.push({ ...block, dateCell });
-      continue;
+    try {
+      blocks.push(...readSheetBlocks(path, sheet, dateCell));
+    } catch (error) {
+      problems.push(`лист «${sheet.title}»: ${String(error?.message ?? error)}`);
     }
-
-    // Сетка с подписью «N место» и фамилией справа от неё.
-    const captioned = readPlaceCaptions(sheet.rows, sheet.title);
-    if (captioned.length > 0) {
-      for (const block of captioned) blocks.push({ ...block, dateCell });
-      continue;
-    }
-
-    const hasBlocks = sheet.rows.some((row) => row.some((cell) => BLOCK.test(String(cell ?? ""))));
-    if (hasBlocks) {
-      // Старый формат: лист «Финальный этап.Юноши» с блоками «Места 1-8», «9-16»…
-      const stageCell = sheet.rows
-        .flat()
-        .map((cell) => String(cell ?? ""))
-        .find((cell) => /Финальный\s+этап/i.test(cell));
-      // В заголовке соревнования есть «юношей и девушек», поэтому пол берём
-      // только из подзаголовка листа: «Финальный этап.Юноши».
-      const gender = genderOf(stageCell) || genderOf(path.split(/[\\/]/).pop());
-      if (!gender) throw new Error("Не удалось понять пол участников: в заголовке листа нет «Юноши» или «Девушки».");
-      blocks.push({ gender, entries: readFinalStage(sheet.rows), dateCell });
-      continue;
-    }
-    sheet.rows.forEach((cells, row) => {
-      (cells ?? []).forEach((cell) => {
-        const title = String(cell ?? "");
-        const rangeMatch = PLACE_RANGE.exec(title.trim());
-        if (rangeMatch) {
-          // Пол в таких таблицах — подзаголовок «ЮНОШИ» / «ДЕВУШКИ» над блоком.
-          const gender = genderOf(sheet.rows.slice(0, row).flat().map((value) => String(value ?? "")).reverse().find((value) => genderOf(value)));
-          const entries = gender
-            ? readRangeFinal(sheet.rows, row, Number(rangeMatch[1]), Number(rangeMatch[2]))
-            : [];
-          if (entries.length > 0) blocks.push({ gender, entries, dateCell });
-          return;
-        }
-        const groupMatch = FINAL_GROUP_TITLE.exec(title);
-        if (groupMatch) {
-          const entries = readGroupFinal(sheet.rows, row);
-          const gender = genderOf(groupMatch[1]);
-          if (entries.length > 0 && gender) {
-            const block = `Финал ${groupMatch[2]}`;
-            blocks.push({ gender, entries: entries.map((entry) => ({ ...entry, block })), dateCell });
-          }
-          return;
-        }
-        const match = FINAL_TITLE.exec(title);
-        if (!match) return;
-        const gender = genderOf(title);
-        if (!gender) return;
-        const from = Number(match[1]);
-        const to = Number(match[2]);
-        // Сетки взрослых чемпионатов подписаны «N место» и для первых мест тоже.
-        const labeled = readPlaceLabels(sheet.rows, from, to);
-        const entries = labeled.length > 0 ? labeled : from === 1 ? readPlaceColumn(sheet.rows, row) : [];
-        if (entries.length > 0) blocks.push({ gender, entries, dateCell });
-      });
-    });
   }
 
-  if (blocks.length === 0) throw new Error(`В файле нет финального этапа с местами: ${path}`);
+  if (blocks.length === 0) {
+    if (problems.length > 0) throw new Error(`Ни один лист не разобран (${problems.join("; ")})`);
+    throw new Error(`В файле нет финального этапа с местами: ${path}`);
+  }
+  return { blocks, problems };
+}
+
+/** Финальные блоки одного листа: таблица с «Место», сетка с подписями, круговой финал. */
+function readSheetBlocks(path, sheet, dateCell) {
+  const blocks = [];
+
+  // Финальная таблица с колонкой «Место» читается первой: в ней номер
+  // участника в столбце B, и старый разбор принял бы его за место.
+  const placed = readPlacedFinals(sheet.rows, sheet.title);
+  if (placed.length > 0) return placed.map((block) => ({ ...block, dateCell }));
+
+  // Сетка с подписью «N место» и фамилией справа от неё.
+  const captioned = readPlaceCaptions(sheet.rows, sheet.title);
+  if (captioned.length > 0) return captioned.map((block) => ({ ...block, dateCell }));
+
+  const hasBlocks = sheet.rows.some((row) => row.some((cell) => BLOCK.test(String(cell ?? ""))));
+  if (hasBlocks) {
+    // Старый формат: лист «Финальный этап.Юноши» с блоками «Места 1-8», «9-16»…
+    const stageCell = sheet.rows
+      .flat()
+      .map((cell) => String(cell ?? ""))
+      .find((cell) => /Финальный\s+этап/i.test(cell));
+    // В заголовке соревнования есть «юношей и девушек», поэтому пол берём
+    // из подзаголовка над блоком мест или из имени листа: «юн фин», «дев фин».
+    const blockRow = sheet.rows.findIndex((row) => row.some((cell) => BLOCK.test(String(cell ?? ""))));
+    const gender =
+      genderOf(stageCell) ||
+      genderAbove(sheet.rows, blockRow) ||
+      sheetGenderOf(sheet.title) ||
+      sheetGenderOf(basename(path));
+    if (!gender) throw new Error("Не удалось понять пол участников: в листе нет «Юноши» или «Девушки».");
+    const entries = readFinalStage(sheet.rows);
+    if (entries.length === 0) throw new Error("на листе есть блоки «Места», но ни одна колонка не похожа на места");
+    return [{ gender, entries, dateCell }];
+  }
+
+  sheet.rows.forEach((cells, row) => {
+    (cells ?? []).forEach((cell) => {
+      const title = String(cell ?? "");
+      const rangeMatch = PLACE_RANGE.exec(title.trim());
+      if (rangeMatch) {
+        // Пол в таких таблицах — подзаголовок «ЮНОШИ» / «ДЕВУШКИ» над блоком.
+        const gender = genderOf(sheet.rows.slice(0, row).flat().map((value) => String(value ?? "")).reverse().find((value) => genderOf(value)));
+        const entries = gender
+          ? readRangeFinal(sheet.rows, row, Number(rangeMatch[1]), Number(rangeMatch[2]))
+          : [];
+        if (entries.length > 0) blocks.push({ gender, entries, dateCell });
+        return;
+      }
+      const groupMatch = FINAL_GROUP_TITLE.exec(title);
+      if (groupMatch) {
+        const entries = readGroupFinal(sheet.rows, row);
+        const gender = genderOf(groupMatch[1]);
+        if (entries.length > 0 && gender) {
+          const block = `Финал ${groupMatch[2]}`;
+          blocks.push({ gender, entries: entries.map((entry) => ({ ...entry, block })), dateCell });
+        }
+        return;
+      }
+      const match = FINAL_TITLE.exec(title);
+      if (!match) return;
+      const gender = genderOf(title);
+      if (!gender) return;
+      const from = Number(match[1]);
+      const to = Number(match[2]);
+      // Сетки взрослых чемпионатов подписаны «N место» и для первых мест тоже.
+      const labeled = readPlaceLabels(sheet.rows, from, to);
+      const entries = labeled.length > 0 ? labeled : from === 1 ? readPlaceColumn(sheet.rows, row) : [];
+      if (entries.length > 0) blocks.push({ gender, entries, dateCell });
+    });
+  });
   return blocks;
 }
 
@@ -455,10 +523,15 @@ function wrangler(args, { capture = false } = {}) {
   const result = spawnSync(process.execPath, [WRANGLER_CLI, "d1", "execute", DB_NAME, ...args], {
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
+    // Выгрузка всех соревнований и результатов не влезает в стандартный 1 МБ.
+    maxBuffer: 64 * 1024 * 1024,
   });
   if (result.status !== 0) throw new Error(`wrangler завершился с кодом ${result.status ?? "?"}`);
   return result.stdout ?? "";
 }
+
+/** Пауза между повторами: busy-wait, потому что весь скрипт синхронный. */
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /** D1 иногда отвечает 7403 на первый запрос — повторяем пару раз. */
 function queryJson(sql) {
@@ -473,10 +546,27 @@ function queryJson(sql) {
       return JSON.parse(output.slice(start, end + 1))[0]?.results ?? [];
     } catch (error) {
       lastError = error;
-      spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 1500)"]);
+      sleep(1500);
     }
   }
   throw lastError ?? new Error("Запрос к базе не выполнился.");
+}
+
+/** Обложка из папки протокола (то же правило, что у import-posters). */
+function findPoster(files, date) {
+  const dirs = new Set();
+  for (const file of files) {
+    const fileDir = dirname(file);
+    dirs.add(fileDir);
+    dirs.add(dirname(fileDir));
+  }
+  for (const base of dirs) {
+    const baseDate = dateFromText(base);
+    if (baseDate && baseDate !== date) continue;
+    const cover = findCover(base);
+    if (cover) return cover.path;
+  }
+  return null;
 }
 
 function executeSql(statements) {
@@ -499,61 +589,23 @@ function executeSql(statements) {
 // Основной проход
 // ---------------------------------------------------------------------------
 
+const allMode = hasFlag("all");
+if (allMode && !dryRun) {
+  throw new Error("--all — только отчёт: по всем папкам сразу ничего не записывается. Для записи запускайте импорт по одной папке с --write.");
+}
+// Флаги одного запуска в --all не имеют смысла: --date или --competition
+// подменили бы данные сразу всем папкам, поэтому лучше упасть, а не угадывать.
+const perRunFlags = ["competition", "date", "city", "age", "source"].filter((name) => option(name) !== null);
+if (allMode && perRunFlags.length > 0) {
+  throw new Error(`--all не сочетается с ${perRunFlags.map((name) => `--${name}`).join(", ")}: это флаги одного запуска.`);
+}
+
+const map = readMap();
 const targets = positional.length > 0 ? positional : ["protocols"];
-const files = collectFiles(targets);
-if (files.length === 0) throw new Error("В указанных путях нет xlsx-протоколов.");
 
-// В папке могут лежать и протоколы предварительных раундов без мест — их
-// пропускаем, чтобы один такой файл не отменял импорт всей папки.
-const parsed = [];
-const skipped = [];
-for (const path of files) {
-  try {
-    parsed.push(...readProtocol(path).map((block) => ({ path, ...block })));
-  } catch (error) {
-    if (!/нет финального этапа/.test(String(error?.message))) throw error;
-    skipped.push(path);
-  }
-}
-if (parsed.length === 0) {
-  throw new Error(`Ни в одном протоколе нет финального этапа с местами: ${files.join(", ")}`);
-}
-for (const path of skipped) console.log(`  пропущен (нет мест): ${path.split(/[\\/]/).pop()}`);
-
-// «??» здесь не годится: dateFromText возвращает пустую строку, а не null.
-const date =
-  option("date") ||
-  dateFromText(parsed[0].path) ||
-  dateFromText(targets[0]) ||
-  dateFromText(parsed[0].dateCell);
-if (!date) throw new Error("Не удалось определить дату соревнования. Укажите её: --date=2026-01-10.");
-
-let competition = null;
-const explicit = option("competition");
-if (explicit) {
-  const rows = queryJson(
-    `SELECT id, slug, title, starts_on FROM competitions WHERE id = ${quote(explicit)} OR slug = ${quote(explicit)}`,
-  );
-  competition = rows[0] ?? null;
-  if (!competition) throw new Error(`Соревнование не найдено: ${explicit}`);
-} else {
-  const rows = queryJson(`SELECT id, slug, title, starts_on FROM competitions WHERE starts_on = ${quote(date)}`);
-  const school = rows.filter((row) => /ОСДЮШОР/i.test(String(row.title)));
-  const pick = school.length === 1 ? school : rows.length === 1 ? rows : null;
-  if (!pick) {
-    const list = rows.map((row) => `  ${row.id}  ${row.starts_on}  ${row.title}`).join("\n");
-    throw new Error(
-      `Не удалось однозначно выбрать соревнование на ${date}.\n${list || "  (в календаре на эту дату ничего нет)"}\n` +
-        "Укажите его: --competition=<id>.",
-    );
-  }
-  competition = pick[0];
-}
-
-const city = option("city") ?? "Гродно";
-const ageOption = option("age") ?? (/20\d\d/.exec(competition.title)?.[0] ?? "");
-const sourceTitle = option("source") ?? String(competition.title).replace(/\s*\(.*$/, "").trim();
-
+// Общие данные — один раз на весь прогон: иначе отчёт по 118 папкам сделает
+// сотни запросов к D1.
+const competitions = queryJson("SELECT id, slug, title, starts_on FROM competitions");
 const athletes = queryJson("SELECT id, full_name, gender FROM athletes");
 const byName = new Map();
 for (const athlete of athletes) {
@@ -569,111 +621,288 @@ for (const athlete of athletes) {
   list.push(athlete);
   bySurname.set(surname, list);
 }
-
-const existing = queryJson(
-  `SELECT id, athlete_id, notion_id FROM competition_results WHERE competition_id = ${quote(competition.id)}`,
-);
-const existingByAthlete = new Map(existing.map((row) => [row.athlete_id, row]));
-
-const statements = [];
-const report = [];
-const unmatched = [];
-const ambiguous = [];
-const ties = [];
-const usedAthletes = new Map();
-let created = 0;
-let updated = 0;
-
-for (const protocol of parsed) {
-  const places = new Map();
-  for (const entry of protocol.entries) places.set(entry.place, [...(places.get(entry.place) ?? []), entry.name]);
-  const label = `${protocol.gender === "f" ? "девушки" : "юноши"}, места ${protocol.entries[0]?.block ?? ""}`;
-  // --age=gender: у взрослых чемпионатов категория — пол участника.
-  const ageCategory = ageOption === "gender" ? (protocol.gender === "f" ? "женщины" : "мужчины") : ageOption;
-  for (const [place, names] of places) {
-    if (names.length > 1) ties.push(`${place} место (${label}) — ${names.join(", ")}`);
-  }
-  for (const entry of protocol.entries) {
-    const key = normalize(entry.name);
-    const candidates =
-      byName.get(key) ?? bySurname.get(key.split(" ")[0])?.filter((row) => normalize(row.full_name).split(" ")[1]?.[0] === key.split(" ")[1]?.[0]) ?? [];
-    // Однофамильцев в протоколе различает пол блока: «Девушки» / «Юноши».
-    const sameGender =
-      candidates.length > 1 && protocol.gender
-        ? candidates.filter((row) => row.gender === protocol.gender)
-        : candidates;
-    if (candidates.length === 0) {
-      unmatched.push(`${entry.name} (${entry.place} место, ${protocol.path})`);
-      continue;
-    }
-    if (sameGender.length > 1 || sameGender.length === 0) {
-      ambiguous.push(`${entry.name} — ${candidates.map((row) => row.full_name).join(", ")}`);
-      continue;
-    }
-    const athlete = sameGender[0];
-    if (usedAthletes.has(athlete.id)) {
-      ambiguous.push(`${entry.name} — уже был в протоколе как ${usedAthletes.get(athlete.id)}`);
-      continue;
-    }
-    usedAthletes.set(athlete.id, entry.name);
-
-    const same = existingByAthlete.get(athlete.id);
-    // Фамилии в протоколах часто с инициалом — показываем, кого выбрали в базе.
-    const matched =
-      normalize(athlete.full_name) === key ? "" : ` как ${athlete.full_name}`;
-    const eventKind = "Личные";
-    if (same) {
-      statements.push(
-        `UPDATE competition_results SET place = ${entry.place}, age_category = ${sqlValue(ageCategory)}, ` +
-          `event_kind = ${quote(eventKind)}, city = ${quote(city)}, held_on = ${quote(date)}, ` +
-          `source_title = ${quote(sourceTitle)}, updated_at = datetime('now') WHERE id = ${quote(same.id)};`,
-      );
-      updated += 1;
-      report.push(`${entry.name} — ${entry.place} место (${label})${matched} → обновлена существующая строка`);
-    } else {
-      const notionId = `protocol:${date}:${competition.slug}:${key.replace(/\s+/g, "-")}`;
-      statements.push(
-        `INSERT INTO competition_results (id, notion_id, competition_id, athlete_id, held_on, place, ` +
-          `age_category, event_kind, city, source_title) VALUES (${quote(randomUUID())}, ${quote(notionId)}, ` +
-          `${quote(competition.id)}, ${quote(athlete.id)}, ${quote(date)}, ${entry.place}, ` +
-          `${sqlValue(ageCategory)}, ${quote(eventKind)}, ${quote(city)}, ${quote(sourceTitle)});`,
-      );
-      created += 1;
-      report.push(`${entry.name} — ${entry.place} место (${label})${matched}`);
-    }
-  }
+const resultsByCompetition = new Map();
+for (const row of queryJson("SELECT id, athlete_id, notion_id, competition_id FROM competition_results")) {
+  const list = resultsByCompetition.get(row.competition_id) ?? new Map();
+  list.set(row.athlete_id, row);
+  resultsByCompetition.set(row.competition_id, list);
 }
 
-console.log(`Соревнование: ${competition.title}`);
-console.log(`  ${competition.id} · ${competition.starts_on} · ${city} · возраст ${ageOption === "gender" ? "по полу" : ageOption || "не указан"}`);
-console.log(`Протоколов: ${parsed.length} (${files.map((path) => path.split(/[\\/]/).pop()).join(", ")})`);
-for (const protocol of parsed) {
-  const name = protocol.path.split(/[\\/]/).pop();
+/** Один проход по папке: разбор протоколов, выбор соревнования, сопоставление имён. */
+function processFolder(folderTargets) {
+  const out = {
+    files: [],
+    parsed: [],
+    skipped: [],
+    places: 0,
+    competition: null,
+    date: "",
+    rows: [],
+    unmatched: [],
+    ambiguous: [],
+    ties: [],
+    issues: [],
+    statements: [],
+    created: 0,
+    updated: 0,
+    city: "",
+    ageOption: "",
+  };
+  try {
+    out.files = collectFiles(folderTargets);
+  } catch (error) {
+    out.issues.push(String(error?.message ?? error));
+    return out;
+  }
+  if (out.files.length === 0) {
+    out.issues.push("нет xlsx-протоколов");
+    return out;
+  }
+
+  // В папке могут лежать и протоколы предварительных раундов без мест — их
+  // пропускаем, чтобы один такой файл не отменял импорт всей папки.
+  for (const path of out.files) {
+    try {
+      const { blocks, problems } = readProtocol(path);
+      out.parsed.push(...blocks.map((block) => ({ path, ...block })));
+      // Проблемный лист — пометка, а не отказ от всего файла.
+      for (const problem of problems) out.issues.push(`${basename(path)}: ${problem}`);
+    } catch (error) {
+      const message = String(error?.message ?? error);
+      if (/нет финального этапа/.test(message)) {
+        out.skipped.push(path);
+        continue;
+      }
+      const issue = `${basename(path)}: ${message}`;
+      out.issues.push(issue);
+      // В отчёте это пометка, а в записи — стоп: иначе в базу уедет неполный
+      // импорт папки и никто об этом не узнает.
+      if (!dryRun) {
+        throw new Error(
+          `Файл не разобран, запись остановлена: ${issue}\n` +
+            "Исправьте протокол или уберите его из папки. Полный список проблем — без --write.",
+        );
+      }
+    }
+  }
+  out.places = out.parsed.reduce((sum, protocol) => sum + protocol.entries.length, 0);
+  if (out.parsed.length === 0) {
+    out.issues.push("нет финального этапа с местами");
+    return out;
+  }
+  if (out.places === 0) out.issues.push("лист найден, но строк с местами в нём нет (командные таблицы?)");
+
+  // «??» здесь не годится: dateFromText возвращает пустую строку, а не null.
+  const date =
+    option("date") ||
+    dateFromText(out.parsed[0].path) ||
+    dateFromText(folderTargets[0]) ||
+    dateFromText(out.parsed[0].dateCell);
+  if (!date) {
+    out.issues.push("не удалось определить дату соревнования");
+    return out;
+  }
+  out.date = date;
+
+  const explicit = option("competition");
+  // Папка из карты получает свой slug без сверки дат и названий.
+  const folderName = folderTargets.length === 1 && statSync(folderTargets[0]).isDirectory() ? basename(folderTargets[0]) : "";
+  const mapped = folderName ? map[folderName] : null;
+  if (explicit) {
+    out.competition = competitions.find((row) => row.id === explicit || row.slug === explicit) ?? null;
+    if (!out.competition) out.issues.push(`соревнование не найдено: ${explicit}`);
+  } else if (mapped) {
+    out.competition = competitions.find((row) => row.slug === mapped) ?? null;
+    if (!out.competition) out.issues.push(`карта ведёт на «${mapped}», но такого соревнования нет в календаре`);
+  } else {
+    const rows = competitions.filter((row) => row.starts_on === date);
+    const school = rows.filter((row) => /ОСДЮШОР/i.test(String(row.title)));
+    out.competition = school.length === 1 ? school[0] : rows.length === 1 ? rows[0] : null;
+    if (!out.competition) {
+      const list = rows.map((row) => `  ${row.id}  ${row.starts_on}  ${row.title}`).join("\n");
+      out.issues.push(
+        `не удалось однозначно выбрать соревнование на ${date}.\n${list || "  (в календаре на эту дату ничего нет)"}\n` +
+          "Укажите его: --competition=<id> или добавьте папку в scripts/protocol-map.json " +
+          "(node scripts/match-protocols.mjs --save).",
+      );
+    }
+  }
+  if (!out.competition) return out;
+  const competition = out.competition;
+
+  const city = (out.city = option("city") ?? "Гродно");
+  const ageOption = (out.ageOption = option("age") ?? (/20\d\d/.exec(competition.title)?.[0] ?? ""));
+  const sourceTitle = option("source") ?? String(competition.title).replace(/\s*\(.*$/, "").trim();
+
+  const existingByAthlete = resultsByCompetition.get(competition.id) ?? new Map();
+
+  const statements = out.statements;
+  const usedAthletes = new Map();
+
+  for (const protocol of out.parsed) {
+    const places = new Map();
+    for (const entry of protocol.entries) places.set(entry.place, [...(places.get(entry.place) ?? []), entry.name]);
+    const label = `${protocol.gender === "f" ? "девушки" : "юноши"}, места ${protocol.entries[0]?.block ?? ""}`;
+    // --age=gender: у взрослых чемпионатов категория — пол участника.
+    const ageCategory = ageOption === "gender" ? (protocol.gender === "f" ? "женщины" : "мужчины") : ageOption;
+    for (const [place, names] of places) {
+      if (names.length > 1) out.ties.push(`${place} место (${label}) — ${names.join(", ")}`);
+    }
+    for (const entry of protocol.entries) {
+      const key = normalize(entry.name);
+      const candidates =
+        byName.get(key) ?? bySurname.get(key.split(" ")[0])?.filter((row) => normalize(row.full_name).split(" ")[1]?.[0] === key.split(" ")[1]?.[0]) ?? [];
+      // Однофамильцев в протоколе различает пол блока: «Девушки» / «Юноши».
+      const sameGender =
+        candidates.length > 1 && protocol.gender
+          ? candidates.filter((row) => row.gender === protocol.gender)
+          : candidates;
+      if (candidates.length === 0) {
+        out.unmatched.push(`${entry.name} (${entry.place} место, ${basename(protocol.path)})`);
+        continue;
+      }
+      if (sameGender.length > 1 || sameGender.length === 0) {
+        out.ambiguous.push(`${entry.name} — ${candidates.map((row) => row.full_name).join(", ")}`);
+        continue;
+      }
+      const athlete = sameGender[0];
+      if (usedAthletes.has(athlete.id)) {
+        out.ambiguous.push(`${entry.name} — уже был в протоколе как ${usedAthletes.get(athlete.id)}`);
+        continue;
+      }
+      usedAthletes.set(athlete.id, entry.name);
+
+      const same = existingByAthlete.get(athlete.id);
+      // Фамилии в протоколах часто с инициалом — показываем, кого выбрали в базе.
+      const matched = normalize(athlete.full_name) === key ? "" : ` как ${athlete.full_name}`;
+      const eventKind = "Личные";
+      if (same) {
+        statements.push(
+          `UPDATE competition_results SET place = ${entry.place}, age_category = ${sqlValue(ageCategory)}, ` +
+            `event_kind = ${quote(eventKind)}, city = ${quote(city)}, held_on = ${quote(date)}, ` +
+            `source_title = ${quote(sourceTitle)}, updated_at = datetime('now') WHERE id = ${quote(same.id)};`,
+        );
+        out.updated += 1;
+        out.rows.push(`${entry.name} — ${entry.place} место (${label})${matched} → обновлена существующая строка`);
+      } else {
+        const notionId = `protocol:${date}:${competition.slug}:${key.replace(/\s+/g, "-")}`;
+        statements.push(
+          `INSERT INTO competition_results (id, notion_id, competition_id, athlete_id, held_on, place, ` +
+            `age_category, event_kind, city, source_title) VALUES (${quote(randomUUID())}, ${quote(notionId)}, ` +
+            `${quote(competition.id)}, ${quote(athlete.id)}, ${quote(date)}, ${entry.place}, ` +
+            `${sqlValue(ageCategory)}, ${quote(eventKind)}, ${quote(city)}, ${quote(sourceTitle)});`,
+        );
+        out.created += 1;
+        out.rows.push(`${entry.name} — ${entry.place} место (${label})${matched}`);
+      }
+    }
+  }
+
+  return out;
+}
+
+/** Подробный разбор одной папки (обычный запуск импорта). */
+function printFolder(out) {
+  const competition = out.competition;
+  console.log(`Соревнование: ${competition.title}`);
   console.log(
-    `  ${name}: ${protocol.entries.length} мест (${protocol.gender === "f" ? "девушки" : "юноши"}, ` +
-      `${protocol.entries[0]?.block ?? ""})`,
+    `  ${competition.id} · ${competition.starts_on} · ${out.city} · возраст ` +
+      `${out.ageOption === "gender" ? "по полу" : out.ageOption || "не указан"}`,
   );
-}
-console.log(`\nРазобрано мест: ${parsed.reduce((sum, protocol) => sum + protocol.entries.length, 0)}`);
-for (const line of report) console.log(`  ${line}`);
+  console.log(`Протоколов: ${out.parsed.length} (${out.files.map((path) => basename(path)).join(", ")})`);
+  for (const path of out.skipped) console.log(`  пропущен (нет мест): ${basename(path)}`);
+  for (const protocol of out.parsed) {
+    console.log(
+      `  ${basename(protocol.path)}: ${protocol.entries.length} мест ` +
+        `(${protocol.gender === "f" ? "девушки" : "юноши"}, ${protocol.entries[0]?.block ?? ""})`,
+    );
+  }
+  console.log(`\nРазобрано мест: ${out.places}`);
+  for (const line of out.rows) console.log(`  ${line}`);
 
-if (unmatched.length > 0) {
-  console.log(`\nНет в базе спортсменов (${unmatched.length}) — строки не записаны:`);
-  for (const line of unmatched) console.log(`  - ${line}`);
+  if (out.unmatched.length > 0) {
+    console.log(`\nНет в базе спортсменов (${out.unmatched.length}) — строки не записаны:`);
+    for (const line of out.unmatched) console.log(`  - ${line}`);
+  }
+  if (out.ambiguous.length > 0) {
+    console.log(`\nСпорные совпадения (${out.ambiguous.length}) — строки не записаны:`);
+    for (const line of out.ambiguous) console.log(`  - ${line}`);
+  }
+  if (out.ties.length > 0) {
+    console.log(`\nДелёж мест в протоколе (${out.ties.length}) — записано как в протоколе:`);
+    for (const line of out.ties) console.log(`  - ${line}`);
+  }
+  // В записи те же цифры напечатает строка «Записано» в конце.
+  if (dryRun) console.log(`\nВ базу: добавится ${out.created}, обновится ${out.updated}.`);
 }
-if (ambiguous.length > 0) {
-  console.log(`\nСпорные совпадения (${ambiguous.length}) — строки не записаны:`);
-  for (const line of ambiguous) console.log(`  - ${line}`);
+
+// ---------------------------------------------------------------------------
+// Режимы запуска
+// ---------------------------------------------------------------------------
+
+if (allMode) {
+  const folders = Object.keys(map)
+    .sort()
+    .map((name) => ({ label: name, targets: [join("protocols", name)] }));
+  let withPlaces = 0;
+  let withRows = 0;
+
+  for (const folder of folders) {
+    const out = processFolder(folder.targets);
+    if (out.places > 0) withPlaces += 1;
+    if (out.rows.length > 0) withRows += 1;
+    const missing = out.unmatched.length + out.ambiguous.length;
+
+    if (out.rows.length > 0) {
+      console.log(
+        `${folder.label} · мест ${out.places} · в базу ${out.rows.length}` + (missing > 0 ? ` · не сопоставлено ${missing}` : ""),
+      );
+      continue;
+    }
+
+    console.log(`${folder.label} · мест ${out.places} · результатов нет`);
+    for (const issue of out.issues) console.log(`    ${issue.split("\n")[0]}`);
+    if (missing > 0) console.log(`    не сопоставлено ${missing} из ${out.places}: нет в списке спортсменов или спорные однофамильцы`);
+  }
+
+  console.log(
+    `\nПапок: ${folders.length} · с разобранными местами: ${withPlaces} · ` +
+      `результаты есть: ${withRows} · без результатов: ${folders.length - withRows}`,
+  );
+  console.log("\nЭто был отчёт: в базу ничего не записано.");
+  process.exit(0);
 }
-if (ties.length > 0) {
-  console.log(`\nДелёж мест в протоколе (${ties.length}) — записано как в протоколе:`);
-  for (const line of ties) console.log(`  - ${line}`);
+
+const out = processFolder(targets);
+
+if (!out.competition) {
+  for (const issue of out.issues) console.log(`  ${issue}`);
+  // Отчёт не падает из-за проблемной папки: причины уже напечатаны.
+  if (dryRun) {
+    console.log("\nЭто был отчёт: разбирать нечего, в базу ничего не записано.");
+    process.exit(0);
+  }
+  throw new Error(out.issues.join("\n") || "Не удалось разобрать протоколы.");
 }
+
+for (const issue of out.issues) console.log(`  ${issue}`);
+printFolder(out);
+
+const poster = findPoster(out.files, out.date);
+if (poster) console.log(`\nПлакат для страницы: ${basename(poster)}`);
 
 if (dryRun) {
   console.log("\nЭто был отчёт: в базу ничего не записано. Для записи добавьте --write (или --remote).");
   process.exit(0);
 }
 
-executeSql(statements);
-console.log(`\nЗаписано: добавлено ${created}, обновлено ${updated}.`);
+if (poster) {
+  const key = uploadCover(poster, { remote });
+  out.statements.push(
+    `UPDATE competitions SET poster_path = ${quote(key)}, updated_at = datetime('now') WHERE id = ${quote(out.competition.id)};`,
+  );
+  console.log(`\nПлакат: ${basename(poster)} → ${key}`);
+}
+
+executeSql(out.statements);
+console.log(`\nЗаписано: добавлено ${out.created}, обновлено ${out.updated}.`);
