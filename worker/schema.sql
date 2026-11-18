@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS competitions (
   regulation_path TEXT,
   results_path TEXT,
   results_text TEXT,
+  -- Плакат соревнования (R2): показывается на странице календаря.
+  poster_path TEXT,
   meta_title TEXT,
   meta_description TEXT,
   is_demo INTEGER NOT NULL DEFAULT 0,

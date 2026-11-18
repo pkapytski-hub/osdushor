@@ -98,6 +98,7 @@ function competitionFrom(value: Record<string, unknown>): Competition {
     regulation_path: value.regulation_path ? String(value.regulation_path) : null,
     results_path: value.results_path ? String(value.results_path) : null,
     results_text: value.results_text ? String(value.results_text) : null,
+    poster_path: value.poster_path ? String(value.poster_path) : null,
     is_demo: Boolean(value.is_demo),
     is_published: Boolean(value.is_published),
     created_at: String(value.created_at ?? ""),

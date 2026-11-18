@@ -92,6 +92,7 @@ const RESOURCES: Record<string, ResourceDef> = {
       regulation_path: { kind: "text", max: 300, nullable: true },
       results_path: { kind: "text", max: 300, nullable: true },
       results_text: { kind: "longtext", max: 20_000, nullable: true },
+      poster_path: { kind: "text", max: 300, nullable: true },
       meta_title: { kind: "text", max: 120, nullable: true },
       meta_description: { kind: "text", max: 300, nullable: true },
       is_published: { kind: "bool" },

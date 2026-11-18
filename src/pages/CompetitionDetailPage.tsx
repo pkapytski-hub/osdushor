@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, Clock, Download, FileText, MapPin,
 import { Seo } from "@/components/Seo";
 import { Breadcrumbs } from "@/components/site/PageHero";
 import { ArticleBody } from "@/components/site/cards";
+import { SmartImage } from "@/components/site/Media";
 import { DemoNotice, EmptyState, LoadingBlock } from "@/components/site/primitives";
 import { ArchiveTable } from "@/components/ArchiveResults";
 import { api, fileUrl } from "@/lib/api";
@@ -194,6 +195,24 @@ export default function CompetitionDetailPage() {
           </div>
 
           <aside className="space-y-4">
+            {item.poster_path && (
+              <a
+                href={fileUrl(item.poster_path)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group block border border-navy-100 bg-white"
+              >
+                <SmartImage
+                  path={item.poster_path}
+                  alt={`Плакат: ${item.title}`}
+                  className="bg-mist"
+                  imgClassName="h-auto w-full object-contain"
+                />
+                <span className="block border-t border-navy-100 px-3 py-2 text-[11px] uppercase tracking-[0.12em] text-graphite-500 transition-colors group-hover:text-accent-600">
+                  Плакат соревнования
+                </span>
+              </a>
+            )}
             <div className="border border-navy-100 bg-mist p-5">
               <p className="font-display text-[12px] uppercase tracking-[0.18em] text-accent-700">Статус</p>
               <p className="mt-2 text-lg text-navy-900">{competitionStatusLabel(item.status)}</p>

@@ -59,6 +59,8 @@ export interface Competition {
   regulation_path: string | null;
   results_path: string | null;
   results_text: string | null;
+  /** Плакат соревнования из папки «медиа» протокола. */
+  poster_path: string | null;
   meta_title?: string | null;
   meta_description?: string | null;
   is_demo: boolean;

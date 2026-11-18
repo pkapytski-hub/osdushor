@@ -100,6 +100,12 @@ export async function ensureSchema(env: Env): Promise<void> {
       } catch {
         /* колонка уже есть */
       }
+      // Плакат соревнования: картинка из папки «медиа» протокола.
+      try {
+        await env.DB.prepare("ALTER TABLE competitions ADD COLUMN poster_path TEXT").run();
+      } catch {
+        /* колонка уже есть */
+      }
       // Одна и та же страница Notion не должна попасть в базу дважды.
       for (const index of [
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_athletes_notion ON athletes(notion_id)",
