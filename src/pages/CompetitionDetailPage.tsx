@@ -4,7 +4,7 @@ import { Seo } from "@/components/Seo";
 import { Breadcrumbs } from "@/components/site/PageHero";
 import { ArticleBody } from "@/components/site/cards";
 import { DemoNotice, EmptyState, LoadingBlock } from "@/components/site/primitives";
-import { ArchiveGroups } from "@/components/ArchiveGroups";
+import { ArchiveTable } from "@/components/ArchiveResults";
 import { api, fileUrl } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import { competitionStatusLabel } from "@/lib/types";
@@ -167,7 +167,7 @@ export default function CompetitionDetailPage() {
                       Места воспитанников
                     </p>
                     <div className="mt-3">
-                      <ArchiveGroups rows={archive} />
+                      <ArchiveTable rows={archive} />
                     </div>
                   </div>
                 )}

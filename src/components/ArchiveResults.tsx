@@ -127,8 +127,10 @@ function splitMixed(key: string, bucket: ArchiveResult[]): Position[] {
   return positions;
 }
 
-/** Подпись группы: «Девушки 2007», «Юноши 2007 · парные», «Мужчины», «2011 · командные». */
+/** Подпись группы: «Юноши 2007», «Юноши 2007 · парные», «Смешанные пары 2011», «Команды 2011». */
 function groupLabel(position: Position): string {
+  if (position.kind === "Командные") return ["Команды", ageLabel(position.age)].filter(Boolean).join(" ");
+  if (position.kind === "Микст") return ["Смешанные пары", ageLabel(position.age)].filter(Boolean).join(" ");
   const implied = impliedGender(position.age);
   const gender = implied ?? position.gender;
   const who =
@@ -142,13 +144,17 @@ function groupLabel(position: Position): string {
 }
 
 function groupKey(position: Position): string {
-  const gender = impliedGender(position.age) ?? position.gender ?? "";
+  // Смешанные пары и команды не делим по полу: иначе одна и та же подпись
+  // повторяется дважды — для полной пары и для участника без партнёра.
+  const mixed = position.kind === "Микст" || position.kind === "Командные";
+  const gender = mixed ? "" : impliedGender(position.age) ?? position.gender ?? "";
   return [position.age ?? "", gender, position.kind ?? ""].join("|");
 }
 
 function groupRank(position: Position): [number, number, number] {
+  // В таблице сначала юноши, потом девушки — как в протоколах.
   const gender = impliedGender(position.age) ?? position.gender;
-  const genderRank = gender === "f" ? 0 : gender === "m" ? 1 : 2;
+  const genderRank = gender === "m" ? 0 : gender === "f" ? 1 : 2;
   const ageRank =
     position.age && /^\d{4}$/.test(position.age) ? Number(position.age) : Number.MAX_SAFE_INTEGER;
   const kindRank =
@@ -192,7 +198,14 @@ export function prizeCount(rows: ArchiveResult[]): number {
   return archiveLayout(rows, { onlyPrizes: true }).shown;
 }
 
-export function ArchiveGroups({
+/**
+ * Места колонками: у каждой категории (пол, год рождения, вид программы) своя
+ * таблица «место — фамилия», места идут сверху вниз по возрастанию. Блоки
+ * выстраиваются в две-три колонки, поэтому широкой сетки с прочерками нет.
+ * Пара занимает одну строку: «Фамилия / Фамилия».
+ * onlyPrizes оставляет только первые три места — для общей страницы архива.
+ */
+export function ArchiveTable({
   rows,
   onlyPrizes = false,
 }: {
@@ -200,41 +213,46 @@ export function ArchiveGroups({
   onlyPrizes?: boolean;
 }) {
   const { groups } = archiveLayout(rows, { onlyPrizes });
+  if (groups.length === 0) return null;
+
   return (
-    <div className="space-y-3.5">
+    <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {groups.map((group) => (
-        <div key={group.key}>
-          {group.label && (
-            <p className="text-[11px] uppercase tracking-[0.14em] text-graphite-500">{group.label}</p>
-          )}
-          <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            {group.positions.map((position) => (
-              <li key={position.key} className="flex items-baseline gap-2">
-                <span
-                  className={cn(
-                    "min-w-4 shrink-0 text-right font-display",
-                    position.place === 1 ? "text-accent-600" : "text-navy-900",
-                  )}
-                  aria-label={position.place != null ? `${position.place} место` : undefined}
-                >
-                  {position.place ?? ""}
-                </span>
-                <span className="min-w-0 text-graphite-700">
-                  {position.athletes.map((athlete, index) => (
-                    <span key={athlete.id}>
-                      {index > 0 && <span className="text-graphite-400">/</span>}
-                      <Link
-                        to={`/sportsmeny/${athlete.athlete_id}`}
-                        className="transition-colors hover:text-accent-600"
-                      >
-                        {athlete.full_name}
-                      </Link>
-                    </span>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>
+        <div key={group.key} className="min-w-0 border border-navy-100 bg-white">
+          <p className="bg-mist px-3 py-2 text-[11px] font-medium leading-snug text-navy-900">
+            {group.label}
+          </p>
+          <table className="w-full border-collapse text-left text-sm">
+            <caption className="sr-only">{group.label}: места по порядку</caption>
+            <tbody>
+              {group.positions.map((position) => (
+                <tr key={position.key} className="border-t border-navy-100 first:border-t-0">
+                  <th
+                    scope="row"
+                    className={cn(
+                      "w-9 py-1.5 pl-3 pr-1 text-right align-top font-display text-base leading-6",
+                      position.place === 1 ? "text-accent-600" : "text-navy-800",
+                    )}
+                  >
+                    {position.place ?? "—"}
+                  </th>
+                  <td className="py-1.5 pl-2 pr-3 align-top leading-6 text-graphite-700">
+                    {position.athletes.map((athlete, athleteIndex) => (
+                      <span key={athlete.id}>
+                        {athleteIndex > 0 && <span className="text-graphite-400"> / </span>}
+                        <Link
+                          to={`/sportsmeny/${athlete.athlete_id}`}
+                          className="transition-colors hover:text-accent-600"
+                        >
+                          {athlete.full_name}
+                        </Link>
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ))}
     </div>

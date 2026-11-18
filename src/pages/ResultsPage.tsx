@@ -8,7 +8,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { EmptyState, ErrorState, LoadingBlock, Reveal } from "@/components/site/primitives";
 import { formatDateRange, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ArchiveGroups, prizeCount } from "@/components/ArchiveGroups";
+import { ArchiveTable, prizeCount } from "@/components/ArchiveResults";
 import type { ArchiveCompetition, Competition } from "@/lib/types";
 
 /** Сколько соревнований архива выводим за один раз. */
@@ -261,7 +261,7 @@ function ArchiveEntry({ item }: { item: ArchiveCompetition }) {
         )}
       </div>
       <div className="mt-3">
-        <ArchiveGroups rows={item.results} onlyPrizes />
+        <ArchiveTable rows={item.results} onlyPrizes />
       </div>
       {item.slug && (
         <Link
