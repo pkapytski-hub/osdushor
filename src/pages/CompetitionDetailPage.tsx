@@ -147,11 +147,7 @@ export default function CompetitionDetailPage() {
                     </span>
                     <Download size={17} className="text-graphite-400" aria-hidden="true" />
                   </a>
-                ) : (
-                  <p className="border border-dashed border-navy-200 px-4 py-3 text-sm text-graphite-500">
-                    Положение о соревнованиях будет опубликовано после утверждения.
-                  </p>
-                )}
+                ) : null}
                 {resultsHref ? (
                   <a href={resultsHref} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 border border-navy-100 bg-white p-4 transition-colors hover:border-navy-300">
                     <Trophy size={20} className="shrink-0 text-accent-600" aria-hidden="true" />
