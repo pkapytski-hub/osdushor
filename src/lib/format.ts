@@ -41,9 +41,13 @@ export function formatDateTime(value: string | null | undefined, fallback = "Д�
 
 export function formatTime(value: string | null | undefined): string {
   if (!value) return "";
-  const plain = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  const text = value.trim();
+  const plain = /^(\d{1,2}):(\d{2})$/.exec(text);
   if (plain) return `${plain[1].padStart(2, "0")}:${plain[2]}`;
-  const date = parseDate(value);
+  // У одной даты без времени («2026-01-16») времени нет: `new Date` считает её
+  // полуночью UTC, и в UTC+3 на сайте появлялось «03:00».
+  if (!/T\d{2}:\d{2}/.test(text) && !/^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/.test(text)) return "";
+  const date = parseDate(text);
   return date ? timeFormatter.format(date) : "";
 }
 
