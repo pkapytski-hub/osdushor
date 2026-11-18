@@ -49,6 +49,28 @@ export function parseClock(value: string): number | null {
   return hours * 60 + minutes;
 }
 
+/**
+ * Местные дата и время «ГГГГ-ММ-ДДTЧЧ:ММ» с существующим днём.
+ * `new Date` нормализует 30 февраля в 2 марта, поэтому после разбора
+ * компоненты сверяются с исходными.
+ */
+export function isLocalDateTime(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(String(value ?? "").trim());
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hours = Number(match[4]);
+  const minutes = Number(match[5]);
+  if (hours > 23 || minutes > 59) return false;
+  const stamp = new Date(Date.UTC(year, month - 1, day));
+  return (
+    stamp.getUTCFullYear() === year &&
+    stamp.getUTCMonth() === month - 1 &&
+    stamp.getUTCDate() === day
+  );
+}
+
 /** Минуты от полуночи → «10:30». */
 function formatClock(total: number): string {
   const minutes = ((Math.round(total) % 1440) + 1440) % 1440;

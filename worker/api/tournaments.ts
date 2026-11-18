@@ -1,6 +1,6 @@
 import { ApiProblem, bool, fail, int, ok, readJson, str, uuid } from "../lib/http";
 import { audit, type SessionUser } from "../lib/auth";
-import { buildSchedule, parseClock } from "../lib/schedule";
+import { buildSchedule, isLocalDateTime, parseClock } from "../lib/schedule";
 import {
   allGroupMatchesPlayed,
   bracketRoundLabel,
@@ -848,7 +848,7 @@ async function updateMatchSchedule(
   let scheduledAt: string | null = null;
   if (rawSchedule !== null && rawSchedule !== undefined && String(rawSchedule).trim() !== "") {
     const value = str(rawSchedule, 20).trim();
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) || Number.isNaN(new Date(value).getTime())) {
+    if (!isLocalDateTime(value)) {
       return fail(400, "invalid_schedule", "Дата и время: ГГГГ-ММ-ДДTЧЧ:ММ.", {
         scheduled_at: "Укажите дату и время.",
       });
