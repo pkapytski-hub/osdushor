@@ -473,6 +473,16 @@ export interface AthleteProfileMatch {
   competition_title: string | null;
 }
 
+/** Один шаг рейтинга школы: турнир и значение рейтинга после него. */
+export interface AthleteProfileRating {
+  id: string;
+  held_on: string;
+  rating_before: number;
+  rating_after: number;
+  delta: number;
+  tournament_title: string;
+}
+
 /** Карточка спортсмена: год рождения, разряд и история мест. */
 export interface AthleteProfile {
   id: string;
@@ -481,6 +491,8 @@ export interface AthleteProfile {
   sport_rank: string | null;
   results: AthleteProfileResult[];
   matches: AthleteProfileMatch[];
+  /** Рейтинг после каждого завершённого турнира школы, от старого к новому. */
+  rating_history?: AthleteProfileRating[];
 }
 
 /** Спортсмен, у которого сегодня день рождения. */

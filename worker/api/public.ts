@@ -410,7 +410,21 @@ export async function getAthlete(env: Env, id: string): Promise<Response> {
   )
     .bind(id)
     .all<Record<string, unknown>>();
-  return ok({ item: { ...athlete, results: results ?? [], matches: matches ?? [] } });
+  // Рейтинг после каждого турнира школы, от старого к новому: по нему в
+  // карточке строится график. Неопубликованные турниры не показываем.
+  const { results: ratingHistory } = await env.DB.prepare(
+    `SELECT h.id, h.held_on, h.rating_before, h.rating_after, h.delta,
+            t.title AS tournament_title
+     FROM rating_history h
+     JOIN tournaments t ON t.id = h.tournament_id
+     WHERE h.athlete_id = ? AND t.is_published = 1
+     ORDER BY h.held_on, t.created_at`,
+  )
+    .bind(id)
+    .all<Record<string, unknown>>();
+  return ok({
+    item: { ...athlete, results: results ?? [], matches: matches ?? [], rating_history: ratingHistory ?? [] },
+  });
 }
 
 // «Сегодня день рождения»: сравниваем только месяц и день, поэтому сама дата

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Trophy, UserRound } from "lucide-react";
 import { Seo } from "@/components/Seo";
@@ -6,9 +6,9 @@ import { PageHero } from "@/components/site/PageHero";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/site/primitives";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
-import { formatDateRange } from "@/lib/format";
+import { formatDate, formatDateRange, formatDateShort, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { AthleteProfileMatch } from "@/lib/types";
+import type { AthleteProfileMatch, AthleteProfileRating } from "@/lib/types";
 
 /** Фильтры по столбцам таблицы встреч: подстрока без учёта регистра. */
 type MatchFilters = {
@@ -43,12 +43,167 @@ const matchesFilters = (match: AthleteProfileMatch, filters: MatchFilters) =>
   hasText(match.opponent_rank, filters.opponent_rank) &&
   (!filters.result || match.result === filters.result);
 
+const ratingFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
+
+/** Прибавка со знаком: «+12,4», «−3,5», «0». */
+const signedRating = (value: number) =>
+  `${value > 0 ? "+" : value < 0 ? "−" : ""}${ratingFormat.format(Math.abs(value))}`;
+
+const CHART_PADDING = { top: 14, right: 12, bottom: 26, left: 44 };
+
+/** Ширина блока в пикселях: график считаем в реальных координатах. */
+function useElementWidth() {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
+    observer.observe(element);
+    setWidth(element.clientWidth);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+/**
+ * Динамика рейтинга школы: ломаная от значения «до первого турнира» до
+ * последнего завершённого. Подписи турниров — во всплывающей подсказке точки.
+ */
+function RatingHistoryChart({ items }: { items: AthleteProfileRating[] }) {
+  const [containerRef, width] = useElementWidth();
+
+  if (items.length === 0) return null;
+
+  // Первая точка — рейтинг «до» первого турнира, дальше по точке на турнир.
+  const points = [
+    { value: items[0].rating_before, item: null },
+    ...items.map((item) => ({ value: item.rating_after, item })),
+  ];
+  const values = points.map((point) => point.value);
+  const lowest = Math.min(...values);
+  const highest = Math.max(...values);
+  // Поля сверху и снизу, чтобы крайние точки не липли к рамке.
+  const margin = Math.max((highest - lowest) * 0.18, 5);
+  const span = highest - lowest + margin * 2;
+  // Высота пропорциональна ширине: на телефоне 190 px, в широкой карточке до 300 px.
+  const height = Math.min(300, Math.max(190, Math.round(width * 0.3)));
+  const plotWidth = width - CHART_PADDING.left - CHART_PADDING.right;
+  const plotHeight = height - CHART_PADDING.top - CHART_PADDING.bottom;
+  const x = (index: number) => CHART_PADDING.left + (index / (points.length - 1)) * plotWidth;
+  const y = (value: number) =>
+    CHART_PADDING.top + plotHeight - ((value - lowest + margin) / span) * plotHeight;
+  const line = points.map((point, index) => `${index ? "L" : "M"}${x(index)} ${y(point.value)}`).join(" ");
+  const levels = [...new Set([highest, lowest])];
+
+  const last = items[items.length - 1];
+  const total = last.rating_after - items[0].rating_before;
+
+  return (
+    <figure className="mt-6 border border-navy-100 bg-white">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-navy-100 bg-mist/40 px-5 py-3">
+        <p className="text-sm text-graphite-600">
+          Сейчас{" "}
+          <span className="font-display text-lg text-navy-900">{ratingFormat.format(last.rating_after)}</span>
+        </p>
+        <p className="text-sm text-graphite-600">
+          За {items.length} {plural(items.length, "турнир", "турнира", "турниров")}:{" "}
+          <span
+            className={cn(
+              "font-medium",
+              total > 0 ? "text-navy-900" : total < 0 ? "text-accent-600" : "text-graphite-500",
+            )}
+          >
+            {signedRating(total)}
+          </span>
+        </p>
+      </div>
+      <div ref={containerRef} className="py-3">
+        {width > 0 && (
+          <svg
+            width={width}
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label={`Рейтинг по турнирам: с ${ratingFormat.format(items[0].rating_before)} до ${ratingFormat.format(
+              last.rating_after,
+            )}`}
+          >
+            {levels.map((level) => (
+              <g key={level}>
+                <line
+                  x1={CHART_PADDING.left}
+                  x2={width - CHART_PADDING.right}
+                  y1={y(level)}
+                  y2={y(level)}
+                  className="stroke-navy-100"
+                />
+                <text
+                  x={CHART_PADDING.left - 8}
+                  y={y(level)}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  className="fill-graphite-400 text-[11px]"
+                >
+                  {ratingFormat.format(level)}
+                </text>
+              </g>
+            ))}
+            <path
+              d={line}
+              className="fill-none stroke-navy-900"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {points.map((point, index) => (
+              <circle
+                key={index}
+                cx={x(index)}
+                cy={y(point.value)}
+                r={index === points.length - 1 ? 4.5 : 3}
+                className={index === points.length - 1 ? "fill-accent-600" : "fill-navy-900"}
+              >
+                {point.item && (
+                  <title>
+                    {`${formatDate(point.item.held_on)} · ${point.item.tournament_title}: ${ratingFormat.format(
+                      point.item.rating_before,
+                    )} → ${ratingFormat.format(point.item.rating_after)} (${signedRating(point.item.delta)})`}
+                  </title>
+                )}
+              </circle>
+            ))}
+            <text
+              x={CHART_PADDING.left}
+              y={height - 8}
+              className="fill-graphite-400 text-[11px]"
+            >
+              {formatDateShort(items[0].held_on)}
+            </text>
+            {items.length > 1 && (
+              <text
+                x={width - CHART_PADDING.right}
+                y={height - 8}
+                textAnchor="end"
+                className="fill-graphite-400 text-[11px]"
+              >
+                {formatDateShort(last.held_on)}
+              </text>
+            )}
+          </svg>
+        )}
+      </div>
+    </figure>
+  );
+}
+
 export default function AthletePage() {
   const { id = "" } = useParams();
   const athlete = useAsync((signal) => api.public.athlete(id, signal), [id]);
   const item = athlete.data?.item;
   const history = item?.results ?? [];
   const matches = item?.matches ?? [];
+  const ratingHistory = item?.rating_history ?? [];
   const [filters, setFilters] = useState<MatchFilters>(EMPTY_FILTERS);
   const shownMatches = useMemo(() => matches.filter((match) => matchesFilters(match, filters)), [matches, filters]);
   const filterActive = Object.values(filters).some(Boolean);
@@ -74,7 +229,7 @@ export default function AthletePage() {
       <PageHero
         label="Спортсмен"
         title={item?.full_name ?? "Карточка спортсмена"}
-        description="Год рождения, спортивный разряд, история мест и личные встречи на соревнованиях."
+        description="Год рождения, спортивный разряд, динамика рейтинга, история мест и личные встречи на соревнованиях."
         crumbs={[{ label: "Спортсмены", to: "/sportsmeny" }, { label: item?.full_name ?? "Карточка" }]}
         compact
       >
@@ -100,12 +255,22 @@ export default function AthletePage() {
                 </dl>
               )}
 
-              {matches.length > 0 && (
+              {ratingHistory.length > 0 && (
                 <section>
                   <div className="flex items-center gap-4">
-                    <h2 className="font-display text-2xl text-navy-900">Личные встречи</h2>
+                    <h2 className="font-display text-xl text-navy-900 sm:text-2xl">Рейтинг по турнирам</h2>
                     <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
-                    <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
+                  </div>
+                  <RatingHistoryChart items={ratingHistory} />
+                </section>
+              )}
+
+              {matches.length > 0 && (
+                <section>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <h2 className="font-display text-xl text-navy-900 sm:text-2xl">Личные встречи</h2>
+                    <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
+                    <span className="ml-auto text-right text-xs uppercase tracking-[0.14em] text-graphite-400">
                       {shownMatches.length === matches.length
                         ? `${matches.length} ${matches.length === 1 ? "встреча" : matches.length < 5 ? "встречи" : "встреч"}`
                         : `${shownMatches.length} из ${matches.length}`}
@@ -227,11 +392,11 @@ export default function AthletePage() {
               )}
 
               <section>
-                <div className="flex items-center gap-4">
-                  <h2 className="font-display text-2xl text-navy-900">История выступлений</h2>
+                <div className="flex flex-wrap items-center gap-4">
+                  <h2 className="font-display text-xl text-navy-900 sm:text-2xl">История выступлений</h2>
                   <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
-                  <span className="text-xs uppercase tracking-[0.14em] text-graphite-400">
-                    {history.length} {history.length === 1 ? "соревнование" : history.length < 5 ? "соревнования" : "соревнований"}
+                  <span className="ml-auto text-right text-xs uppercase tracking-[0.14em] text-graphite-400">
+                    {history.length} {plural(history.length, "соревнование", "соревнования", "соревнований")}
                   </span>
                 </div>
 
