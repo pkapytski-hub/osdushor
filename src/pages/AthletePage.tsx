@@ -271,15 +271,20 @@ export default function AthletePage() {
                 </dl>
               )}
 
-              {ratingHistory.length > 0 && (
-                <section>
-                  <div className="flex items-center gap-4">
-                    <h2 className="font-display text-xl text-navy-900 sm:text-2xl">Рейтинг по турнирам</h2>
-                    <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
-                  </div>
+              <section>
+                <div className="flex items-center gap-4">
+                  <h2 className="font-display text-xl text-navy-900 sm:text-2xl">Рейтинг по турнирам</h2>
+                  <span className="h-px flex-1 bg-navy-100" aria-hidden="true" />
+                </div>
+                {ratingHistory.length > 0 ? (
                   <RatingHistoryChart items={ratingHistory} />
-                </section>
-              )}
+                ) : (
+                  <p className="mt-6 border border-navy-100 bg-mist/40 px-5 py-4 text-sm leading-relaxed text-graphite-600">
+                    График появится после первого подведённого турнира: рейтинг начисляется по итогам
+                    соревнований школы.
+                  </p>
+                )}
+              </section>
 
               {matches.length > 0 && (
                 <section>
