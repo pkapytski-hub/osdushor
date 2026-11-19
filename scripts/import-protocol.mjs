@@ -9,6 +9,7 @@
  *   node scripts/import-protocol.mjs --local              # сверяться с локальной базой
  *   node scripts/import-protocol.mjs --competition=<id|slug>
  *   node scripts/import-protocol.mjs --age=gender      # взрослые: «мужчины» / «женщины»
+ *   node scripts/import-protocol.mjs "protocols/…" --accept-year="Демьянович А, Костюкевич Д"
  *
  * Что читается: лист «Финальный этап» каждого файла — блоки «Места 1-8»,
  * «9-16», «17-24», колонка «Место», а также круговые финалы домашних
@@ -26,6 +27,13 @@
  * лишних пробелов; если однофамильцев несколько, строка не пишется и попадает
  * в отчёт. Сокращения, которые по фамилии не угадать, лежат в
  * scripts/protocol-aliases.json; если там опечатка в ФИО, импорт останавливается.
+ * Рядом с протоколами обычно лежит «Список участников» (xlsx): из него берутся
+ * год рождения и город — год отсекает однофамильцев разных возрастов, а город
+ * не приходится выдумывать. Если год в списке не совпадает с базой, строка не
+ * пишется и попадает в отдельный раздел отчёта: чаще всего это тёзка другого
+ * года. Если же человек тот же, а в базе просто неверный год, его место можно
+ * записать, перечислив имя так, как оно написано в протоколе:
+ * --accept-year="Демьянович А, Костюкевич Д".
  * Повторный запуск обновляет те же строки (ключ импорта лежит в notion_id),
  * поэтому дублей не появляется.
  *
@@ -38,6 +46,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findCover, uploadCover } from "./lib/covers.mjs";
+import { readParticipants } from "./lib/participants.mjs";
 import { readMap } from "./lib/protocol-map.mjs";
 import { readSheets } from "./lib/xlsx.mjs";
 
@@ -695,19 +704,33 @@ if (allMode && !dryRun) {
 }
 // Флаги одного запуска в --all не имеют смысла: --date или --competition
 // подменили бы данные сразу всем папкам, поэтому лучше упасть, а не угадывать.
-const perRunFlags = ["competition", "date", "city", "age", "source"].filter((name) => option(name) !== null);
+const perRunFlags = ["competition", "date", "city", "age", "source", "accept-year"].filter((name) => option(name) !== null);
 if (allMode && perRunFlags.length > 0) {
   throw new Error(`--all не сочетается с ${perRunFlags.map((name) => `--${name}`).join(", ")}: это флаги одного запуска.`);
 }
 
 const map = readMap();
 
+// Строки с расхождением года по умолчанию не пишутся: это может быть тёзка.
+// Имена из --accept-year — ручное подтверждение, что человек тот же и год в базе
+// неверный; только для них сверка года пропускается.
+const acceptYearRaw = option("accept-year");
+if (hasFlag("accept-year") && acceptYearRaw === null) {
+  throw new Error('--accept-year требует имена: --accept-year="Демьянович А, Костюкевич Д" — так, как они написаны в протоколе.');
+}
+const acceptYear = new Set(
+  (acceptYearRaw ?? "")
+    .split(",")
+    .map(normalize)
+    .filter(Boolean),
+);
+
 const targets = positional.length > 0 ? positional : ["protocols"];
 
 // Общие данные — один раз на весь прогон: иначе отчёт по 118 папкам сделает
 // сотни запросов к D1.
 const competitions = queryJson("SELECT id, slug, title, starts_on FROM competitions");
-const athletes = queryJson("SELECT id, full_name, gender FROM athletes");
+const athletes = queryJson("SELECT id, full_name, gender, birth_year FROM athletes");
 const byName = new Map();
 for (const athlete of athletes) {
   const key = normalize(athlete.full_name);
@@ -737,6 +760,45 @@ function findAthletes(name) {
   return initial
     ? sameSurname.filter((row) => normalize(row.full_name).split(" ")[1]?.startsWith(initial))
     : sameSurname;
+}
+
+/**
+ * Участники «Списка участников» по записи из протокола: точное написание, иначе
+ * та же фамилия с тем же инициалом. Список одного турнира, поэтому однофамильцы
+ * из разных городов остаются разными людьми и различаются годом.
+ */
+function findParticipants(list, name) {
+  const key = normalize(name);
+  const exact = list.byName.get(key);
+  if (exact) return exact;
+  const [surname, initial] = key.split(" ");
+  const sameSurname = list.bySurname.get(surname) ?? [];
+  return initial ? sameSurname.filter((row) => normalize(row.name).split(" ")[1]?.startsWith(initial)) : sameSurname;
+}
+
+function buildParticipantIndex(entries) {
+  // Один и тот же человек бывает в нескольких листах списка: город берём из
+  // той записи, где он заполнен, иначе выйдет пустой город при заполненном.
+  const unique = new Map();
+  for (const entry of entries) {
+    const id = `${normalize(entry.name)}|${entry.year}`;
+    const known = unique.get(id);
+    if (!known) unique.set(id, entry);
+    else if (!known.city && entry.city) unique.set(id, { ...known, city: entry.city });
+  }
+  const byName = new Map();
+  const bySurname = new Map();
+  for (const entry of unique.values()) {
+    const key = normalize(entry.name);
+    const named = byName.get(key) ?? [];
+    named.push(entry);
+    byName.set(key, named);
+    const surname = key.split(" ")[0];
+    const family = bySurname.get(surname) ?? [];
+    family.push(entry);
+    bySurname.set(surname, family);
+  }
+  return { byName, bySurname, size: unique.size };
 }
 
 // «Касьян В» — так спортсмен записан в сетке, а в базе он «Касьян Владислав».
@@ -792,6 +854,8 @@ for (const row of queryJson("SELECT id, athlete_id, notion_id, competition_id, e
 /** Один проход по папке: разбор протоколов, выбор соревнования, сопоставление имён. */
 function processFolder(folderTargets) {
   const out = {
+    // Пути запуска нужны отчёту: по ним собирается готовая команда --accept-year.
+    targets: folderTargets,
     files: [],
     parsed: [],
     skipped: [],
@@ -801,6 +865,9 @@ function processFolder(folderTargets) {
     rows: [],
     unmatched: [],
     ambiguous: [],
+    yearMismatch: [],
+    listCount: 0,
+    cities: new Map(),
     ties: [],
     issues: [],
     statements: [],
@@ -819,6 +886,14 @@ function processFolder(folderTargets) {
     out.issues.push("нет xlsx-протоколов");
     return out;
   }
+
+  // «Список участников» — не протокол: из него берём год рождения и город.
+  const listFiles = out.files.filter((path) => /(список|участн|заявк)/i.test(basename(path)));
+  out.files = out.files.filter((path) => !listFiles.includes(path));
+  const { entries: listEntries, problems: listProblems } = readParticipants(listFiles);
+  for (const problem of listProblems) out.issues.push(problem);
+  const list = buildParticipantIndex(listEntries);
+  out.listCount = list.size;
 
   // В папке могут лежать и протоколы предварительных раундов без мест — их
   // пропускаем, чтобы один такой файл не отменял импорт всей папки.
@@ -891,7 +966,8 @@ function processFolder(folderTargets) {
   if (!out.competition) return out;
   const competition = out.competition;
 
-  const city = (out.city = option("city") ?? "Гродно");
+  const forcedCity = option("city");
+  out.city = forcedCity ?? (list.size > 0 ? "город из списка участников" : "Гродно");
   const ageOption = (out.ageOption = option("age") ?? (/20\d\d/.exec(competition.title)?.[0] ?? ""));
   const sourceTitle = option("source") ?? String(competition.title).replace(/\s*\(.*$/, "").trim();
 
@@ -912,21 +988,46 @@ function processFolder(folderTargets) {
     for (const entry of protocol.entries) {
       const key = normalize(entry.name);
       const hint = aliases.get(key);
-      const candidates = hint ? [hint] : findAthletes(entry.name);
+      const acceptedYear = acceptYear.has(key);
+      // Год рождения из списка участников: он и различает однофамильцев.
+      const listed = findParticipants(list, entry.name);
+      const card = listed.length > 0 && listed.every((row) => row.year === listed[0].year) ? listed[0] : null;
+      let candidates = hint ? [hint] : findAthletes(entry.name);
+      // Однофамильцев в протоколе различают пол блока и год из списка.
+      if (!hint && candidates.length > 1 && protocol.gender) {
+        candidates = candidates.filter((row) => row.gender === protocol.gender);
+      }
+      if (!hint && candidates.length > 1 && card) {
+        const sameYear = candidates.filter((row) => Number(row.birth_year) === card.year);
+        if (sameYear.length > 0) candidates = sameYear;
+      }
       if (candidates.length === 0) {
-        out.unmatched.push(`${entry.name} (${entry.place} место, ${basename(protocol.path)})`);
+        const year = card ? `, в списке ${card.year} г.р.` : "";
+        out.unmatched.push(`${entry.name} (${entry.place} место, ${basename(protocol.path)}${year})`);
         continue;
       }
-      // Однофамильцев в протоколе различает пол блока: «Девушки» / «Юноши».
-      const sameGender =
-        candidates.length > 1 && protocol.gender
-          ? candidates.filter((row) => row.gender === protocol.gender)
-          : candidates;
-      if (sameGender.length !== 1) {
-        out.ambiguous.push(`${entry.name} — ${candidates.map((row) => row.full_name).join(", ")}`);
+      if (candidates.length !== 1) {
+        const names = candidates.map((row) => `${row.full_name}${row.birth_year ? ` ${row.birth_year}` : ""}`);
+        out.ambiguous.push(`${entry.name} — ${names.join(", ")}`);
         continue;
       }
-      const athlete = sameGender[0];
+      const athlete = candidates[0];
+      // Подсказка из файла — ручное решение, её год не перепроверяем. Так же
+      // считаем и имя, подтверждённое в --accept-year.
+      if (!hint && !acceptedYear && card && athlete.birth_year && Number(athlete.birth_year) !== card.year) {
+        out.yearMismatch.push({
+          name: entry.name,
+          text:
+            `${entry.name} — в списке ${card.year} г.р., а в базе ${athlete.full_name} ${athlete.birth_year} г.р. ` +
+            `(${entry.place} место, ${basename(protocol.path)})`,
+        });
+        continue;
+      }
+      // Имя принято вручную (--accept-year): пишем строку, но помечаем её в отчёте.
+      const yearNote =
+        !hint && card && athlete.birth_year && Number(athlete.birth_year) !== card.year
+          ? `, год: в списке ${card.year}, в базе ${athlete.birth_year} — принято вручную`
+          : "";
       if (usedAthletes.has(athlete.id)) {
         out.ambiguous.push(`${entry.name} — уже был в протоколе как ${usedAthletes.get(athlete.id)}`);
         continue;
@@ -934,27 +1035,32 @@ function processFolder(folderTargets) {
       usedAthletes.set(athlete.id, entry.name);
 
       const same = existingByAthlete.get(athlete.id);
+      // Город из списка участников; без списка остаётся прежнее «Гродно».
+      const rowCity = forcedCity || card?.city || (list.size === 0 ? "Гродно" : "");
+      // Пустой город не затирает тот, что уже записан в базе.
+      const citySql = rowCity ? `city = ${quote(rowCity)}, ` : "";
+      out.cities.set(rowCity || "не указан", (out.cities.get(rowCity || "не указан") ?? 0) + 1);
       // Фамилии в протоколах часто с инициалом — показываем, кого выбрали в базе.
       const matched = normalize(athlete.full_name) === key ? "" : ` как ${athlete.full_name}`;
       const eventKind = "Личные";
       if (same) {
         statements.push(
           `UPDATE competition_results SET place = ${entry.place}, age_category = ${sqlValue(ageCategory)}, ` +
-            `event_kind = ${quote(eventKind)}, city = ${quote(city)}, held_on = ${quote(date)}, ` +
+            `event_kind = ${quote(eventKind)}, ${citySql}held_on = ${quote(date)}, ` +
             `source_title = ${quote(sourceTitle)}, updated_at = datetime('now') WHERE id = ${quote(same.id)};`,
         );
         out.updated += 1;
-        out.rows.push(`${entry.name} — ${entry.place} место (${label})${matched} → обновлена существующая строка`);
+        out.rows.push(`${entry.name} — ${entry.place} место (${label})${matched}${yearNote} → обновлена существующая строка`);
       } else {
         const notionId = `protocol:${date}:${competition.slug}:${key.replace(/\s+/g, "-")}`;
         statements.push(
           `INSERT INTO competition_results (id, notion_id, competition_id, athlete_id, held_on, place, ` +
             `age_category, event_kind, city, source_title) VALUES (${quote(randomUUID())}, ${quote(notionId)}, ` +
             `${quote(competition.id)}, ${quote(athlete.id)}, ${quote(date)}, ${entry.place}, ` +
-            `${sqlValue(ageCategory)}, ${quote(eventKind)}, ${quote(city)}, ${quote(sourceTitle)});`,
+            `${sqlValue(ageCategory)}, ${quote(eventKind)}, ${sqlValue(rowCity)}, ${quote(sourceTitle)});`,
         );
         out.created += 1;
-        out.rows.push(`${entry.name} — ${entry.place} место (${label})${matched}`);
+        out.rows.push(`${entry.name} — ${entry.place} место (${label})${matched}${yearNote}`);
       }
     }
   }
@@ -971,6 +1077,7 @@ function printFolder(out) {
       `${out.ageOption === "gender" ? "по полу" : out.ageOption || "не указан"}`,
   );
   console.log(`Протоколов: ${out.parsed.length} (${out.files.map((path) => basename(path)).join(", ")})`);
+  if (out.listCount > 0) console.log(`Список участников: ${out.listCount} человек — из него год рождения и город.`);
   for (const path of out.skipped) console.log(`  пропущен (нет мест): ${basename(path)}`);
   for (const protocol of out.parsed) {
     console.log(
@@ -979,6 +1086,10 @@ function printFolder(out) {
     );
   }
   console.log(`\nРазобрано мест: ${out.places}`);
+  const cities = [...out.cities].sort((a, b) => b[1] - a[1]);
+  if (cities.length > 0) {
+    console.log(`Города в записи: ${cities.map(([city, count]) => `${city} — ${count}`).join(", ")}`);
+  }
   for (const line of out.rows) console.log(`  ${line}`);
 
   if (out.unmatched.length > 0) {
@@ -988,6 +1099,23 @@ function printFolder(out) {
   if (out.ambiguous.length > 0) {
     console.log(`\nСпорные совпадения (${out.ambiguous.length}) — строки не записаны:`);
     for (const line of out.ambiguous) console.log(`  - ${line}`);
+  }
+  if (out.yearMismatch.length > 0) {
+    console.log(`\nГод рождения не совпал со списком (${out.yearMismatch.length}) — строки не записаны:`);
+    for (const line of out.yearMismatch) console.log(`  - ${line.text}`);
+    // Готовую команду печатаем целиком: имена из протокола записывать руками
+    // неудобно, а ошибка в одной букве тихо оставит строку без места.
+    const names = [...new Set(out.yearMismatch.map((item) => item.name))].join(", ");
+    const targets = out.targets.map((target) => `"${target}"`).join(" ");
+    const local = hasFlag("local") ? " --local" : "";
+    console.log(
+      "\n  Если это тот же человек, а в базе просто неверный год, запишите их так:\n" +
+        `    node scripts/import-protocol.mjs ${targets} --accept-year="${names}" --write${local}`,
+    );
+    console.log(
+      "  Если же ФИО в протоколе не совпадает с базой даже по первой букве — " +
+        "добавьте пару в scripts/protocol-aliases.json.",
+    );
   }
   if (out.ties.length > 0) {
     console.log(`\nДелёж мест в протоколе (${out.ties.length}) — записано как в протоколе:`);
@@ -1012,18 +1140,23 @@ if (allMode) {
     const out = processFolder(folder.targets);
     if (out.places > 0) withPlaces += 1;
     if (out.rows.length > 0) withRows += 1;
-    const missing = out.unmatched.length + out.ambiguous.length;
+    const missing = out.unmatched.length + out.ambiguous.length + out.yearMismatch.length;
 
+    const yearNote = out.yearMismatch.length > 0 ? ` · год не совпал ${out.yearMismatch.length}` : "";
     if (out.rows.length > 0) {
       console.log(
-        `${folder.label} · мест ${out.places} · в базу ${out.rows.length}` + (missing > 0 ? ` · не сопоставлено ${missing}` : ""),
+        `${folder.label} · мест ${out.places} · в базу ${out.rows.length}` +
+          (missing > 0 ? ` · не сопоставлено ${missing}` : "") +
+          yearNote,
       );
       continue;
     }
 
     console.log(`${folder.label} · мест ${out.places} · результатов нет`);
     for (const issue of out.issues) console.log(`    ${issue.split("\n")[0]}`);
-    if (missing > 0) console.log(`    не сопоставлено ${missing} из ${out.places}: нет в списке спортсменов или спорные однофамильцы`);
+    if (missing > 0) {
+      console.log(`    не сопоставлено ${missing} из ${out.places}: нет в списке спортсменов или спорные однофамильцы${yearNote}`);
+    }
   }
 
   console.log(
