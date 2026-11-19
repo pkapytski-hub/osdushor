@@ -51,6 +51,12 @@ const signedRating = (value: number) =>
 
 const CHART_PADDING = { top: 14, right: 12, bottom: 26, left: 44 };
 
+/** Дата турнира в UTC-миллисекундах: ось X ставит точки по реальному времени. */
+const dayStamp = (value: string) => {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return Date.UTC(year, month - 1, day);
+};
+
 /** Ширина блока в пикселях: график считаем в реальных координатах. */
 function useElementWidth() {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -75,10 +81,10 @@ function RatingHistoryChart({ items }: { items: AthleteProfileRating[] }) {
 
   if (items.length === 0) return null;
 
-  // Первая точка — рейтинг «до» первого турнира, дальше по точке на турнир.
+  // Первая точка — рейтинг «до» первого турнира на его дату, дальше по точке на турнир.
   const points = [
-    { value: items[0].rating_before, item: null },
-    ...items.map((item) => ({ value: item.rating_after, item })),
+    { value: items[0].rating_before, heldOn: items[0].held_on, item: null },
+    ...items.map((item) => ({ value: item.rating_after, heldOn: item.held_on, item })),
   ];
   const values = points.map((point) => point.value);
   const lowest = Math.min(...values);
@@ -90,10 +96,20 @@ function RatingHistoryChart({ items }: { items: AthleteProfileRating[] }) {
   const height = Math.min(300, Math.max(190, Math.round(width * 0.3)));
   const plotWidth = width - CHART_PADDING.left - CHART_PADDING.right;
   const plotHeight = height - CHART_PADDING.top - CHART_PADDING.bottom;
-  const x = (index: number) => CHART_PADDING.left + (index / (points.length - 1)) * plotWidth;
+  // Ось X — по датам: перерыв в полгода должен быть шире недели. Если даты
+  // совпали или пришли не в ISO (span = 0), раскладываем точки равномерно.
+  const stamps = points.map((point) => dayStamp(point.heldOn));
+  const firstStamp = stamps[0];
+  const lastStamp = stamps[stamps.length - 1];
+  const byDate = Number.isFinite(firstStamp) && Number.isFinite(lastStamp) && lastStamp > firstStamp;
+  const xs = stamps.map((stamp, index) =>
+    byDate
+      ? CHART_PADDING.left + ((stamp - firstStamp) / (lastStamp - firstStamp)) * plotWidth
+      : CHART_PADDING.left + (index / (points.length - 1)) * plotWidth,
+  );
   const y = (value: number) =>
     CHART_PADDING.top + plotHeight - ((value - lowest + margin) / span) * plotHeight;
-  const line = points.map((point, index) => `${index ? "L" : "M"}${x(index)} ${y(point.value)}`).join(" ");
+  const line = points.map((point, index) => `${index ? "L" : "M"}${xs[index]} ${y(point.value)}`).join(" ");
   const levels = [...new Set([highest, lowest])];
 
   const last = items[items.length - 1];
@@ -159,7 +175,7 @@ function RatingHistoryChart({ items }: { items: AthleteProfileRating[] }) {
             {points.map((point, index) => (
               <circle
                 key={index}
-                cx={x(index)}
+                cx={xs[index]}
                 cy={y(point.value)}
                 r={index === points.length - 1 ? 4.5 : 3}
                 className={index === points.length - 1 ? "fill-accent-600" : "fill-navy-900"}
