@@ -24,8 +24,10 @@
  *
  * Фамилия сопоставляется с базой athletes по ФИО без учёта ё/е, регистра и
  * лишних пробелов; если однофамильцев несколько, строка не пишется и попадает
- * в отчёт. Повторный запуск обновляет те же строки (ключ импорта лежит в
- * notion_id), поэтому дублей не появляется.
+ * в отчёт. Сокращения, которые по фамилии не угадать, лежат в
+ * scripts/protocol-aliases.json; если там опечатка в ФИО, импорт останавливается.
+ * Повторный запуск обновляет те же строки (ключ импорта лежит в notion_id),
+ * поэтому дублей не появляется.
  *
  * Без флага --write ничего не записывается: печатается разбор и отчёт.
  */
@@ -373,6 +375,89 @@ function sheetGenderOf(title) {
   return "";
 }
 
+/** Место в сетке подписано римской цифрой: «I», «II», «III» — это 1-3 место. */
+const ROMAN_PLACE = /^(I|II|III)$/;
+
+/**
+ * Место в сетке: ячейка-подпись слева от фамилии («17 Семёнчик Е», «III Ключник А»)
+ * или подпись «1 место» справа от неё.
+ */
+function placeTag(cell) {
+  const text = String(cell ?? "").trim();
+  const caption = PLACE_CAPTION.exec(text);
+  if (caption) return { place: Number(caption[1]), nameLeft: true };
+  const roman = ROMAN_PLACE.exec(text);
+  if (roman) return { place: ["I", "II", "III"].indexOf(roman[1]) + 1, nameLeft: false };
+  const number = numberCell(text);
+  if (number !== null) return { place: number, nameLeft: false };
+  return null;
+}
+
+/** Фамилия рядом с подписью места: слева от «N место», справа от номера в сетке. */
+function nameNearPlace(cells, col, nameLeft) {
+  const offsets = nameLeft ? [-1, -2, -3, -4] : [1, 2, 3];
+  for (const offset of offsets) {
+    const name = cleanName(cells[col + offset]);
+    if (NAME.test(name)) return name;
+    // В сетке фамилия бывает без инициала: «III Шульга».
+    if (/^[А-ЯЁ][а-яёА-ЯЁ'.-]{4,}$/.test(name)) return name;
+  }
+  return "";
+}
+
+/**
+ * Сетки финального этапа без колонки «Место»: место подписано у фамилии
+ * («17 Семёнчик Е», «III Ключник А») или подписью «1 место» рядом с ней.
+ *
+ * В такой сетке номера есть и у промежуточных встреч, поэтому берём не все
+ * подписи, а одну колонку — ту, где места попадают в объявленный диапазон
+ * и не повторяются. Если подходят несколько, побеждает самая правая.
+ */
+function readGridPlacements(rows) {
+  const ranges = [];
+  for (const cells of rows) {
+    for (const cell of cells ?? []) {
+      const match = BLOCK.exec(String(cell ?? "").trim());
+      if (match) ranges.push({ from: Number(match[1]), to: Number(match[2]) });
+    }
+  }
+
+  // Лист без подписи диапазона: колонка мест всё равно одна, её и ищем.
+  if (ranges.length === 0) ranges.push({ from: 1, to: 99 });
+
+  const entries = [];
+  for (const { from, to } of ranges) {
+    const columns = new Map();
+    rows.forEach((cells) => {
+      (cells ?? []).forEach((cell, col) => {
+        const tag = placeTag(cell);
+        if (!tag || tag.place < from || tag.place > to) return;
+        const name = nameNearPlace(cells, col, tag.nameLeft);
+        if (!name) return;
+        if (!columns.has(col)) columns.set(col, new Map());
+        const places = columns.get(col);
+        if (!places.has(tag.place)) places.set(tag.place, name);
+      });
+    });
+
+    let best = null;
+    for (const [col, places] of columns) {
+      const names = new Set(places.values());
+      // Колонка годится, только если фамилии в ней не повторяются.
+      const score = names.size === places.size ? places.size : 0;
+      if (score === 0) continue;
+      if (!best || score > best.score || (score === best.score && col > best.col)) {
+        best = { score, col, places };
+      }
+    }
+    if (!best || best.places.size < 3) continue;
+    const places = [...best.places].sort((a, b) => a[0] - b[0]);
+    const block = `${places[0][0]}-${places[places.length - 1][0]}`;
+    for (const [place, name] of places) entries.push({ name, place, block });
+  }
+  return entries;
+}
+
 /**
  * Один xlsx может содержать несколько финальных этапов: юноши 1-8, девушки 1-8,
  * сетки утешения 9-19 — поэтому возвращаем список блоков.
@@ -416,6 +501,18 @@ function readSheetBlocks(path, sheet, dateCell) {
   const captioned = readPlaceCaptions(sheet.rows, sheet.title);
   if (captioned.length > 0) return captioned.map((block) => ({ ...block, dateCell }));
 
+  // Сетка без подписи блока: над таблицей стоит «занятые места», а место — в
+  // правой колонке рядом с фамилией («I Костюкевич К», «4 Цитко К»).
+  const placeTable = sheet.rows.some((row) => row.some((cell) => /занятые\s+места/i.test(String(cell ?? ""))));
+  if (placeTable) {
+    const grid = readGridPlacements(sheet.rows);
+    if (grid.length > 0) {
+      const gender = sheetGenderOf(sheet.title) || sheetGenderOf(basename(path)) || genderAbove(sheet.rows, 0);
+      if (!gender) throw new Error("Не удалось понять пол участников: в листе нет «Юноши» или «Девушки».");
+      return [{ gender, entries: grid, dateCell }];
+    }
+  }
+
   const hasBlocks = sheet.rows.some((row) => row.some((cell) => BLOCK.test(String(cell ?? ""))));
   if (hasBlocks) {
     // Старый формат: лист «Финальный этап.Юноши» с блоками «Места 1-8», «9-16»…
@@ -433,8 +530,11 @@ function readSheetBlocks(path, sheet, dateCell) {
       sheetGenderOf(basename(path));
     if (!gender) throw new Error("Не удалось понять пол участников: в листе нет «Юноши» или «Девушки».");
     const entries = readFinalStage(sheet.rows);
-    if (entries.length === 0) throw new Error("на листе есть блоки «Места», но ни одна колонка не похожа на места");
-    return [{ gender, entries, dateCell }];
+    if (entries.length > 0) return [{ gender, entries, dateCell }];
+    // Сетка с подписью места у фамилии — когда колонки мест в таблице нет.
+    const grid = readGridPlacements(sheet.rows);
+    if (grid.length > 0) return [{ gender, entries: grid, dateCell }];
+    throw new Error("на листе есть блоки «Места», но ни одна колонка не похожа на места");
   }
 
   sheet.rows.forEach((cells, row) => {
@@ -601,6 +701,7 @@ if (allMode && perRunFlags.length > 0) {
 }
 
 const map = readMap();
+
 const targets = positional.length > 0 ? positional : ["protocols"];
 
 // Общие данные — один раз на весь прогон: иначе отчёт по 118 папкам сделает
@@ -621,8 +722,68 @@ for (const athlete of athletes) {
   list.push(athlete);
   bySurname.set(surname, list);
 }
+
+/**
+ * Спортсмены по записи из протокола: точное ФИО, иначе та же фамилия с тем же
+ * инициалом, иначе все однофамильцы. В сетках бывает и одна фамилия без
+ * инициала («Шульга») — её различают пол и проверка единственности ниже.
+ */
+function findAthletes(name) {
+  const key = normalize(name);
+  const [surname, initial] = key.split(" ");
+  const exact = byName.get(key);
+  if (exact) return exact;
+  const sameSurname = bySurname.get(surname) ?? [];
+  return initial
+    ? sameSurname.filter((row) => normalize(row.full_name).split(" ")[1]?.startsWith(initial))
+    : sameSurname;
+}
+
+// «Касьян В» — так спортсмен записан в сетке, а в базе он «Касьян Владислав».
+// Из фамилии и инициала такое не вывести, поэтому подсказки лежат руками в
+// scripts/protocol-aliases.json. Файл проверяется целиком до разбора папок:
+// опечатка в ФИО должна остановить импорт, а не тихо оставить строки без места.
+const aliases = new Map();
+const aliasesPath = fileURLToPath(new URL("./protocol-aliases.json", import.meta.url));
+if (existsSync(aliasesPath)) {
+  let hints;
+  try {
+    hints = JSON.parse(readFileSync(aliasesPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Не удалось прочитать scripts/protocol-aliases.json: ${error?.message ?? error}`);
+  }
+  for (const [from, to] of Object.entries(hints)) {
+    const target = normalize(to);
+    const words = target.split(" ");
+    if (!NAME.test(String(to)) || words.length < 2 || words[1].length < 2) {
+      throw new Error(
+        `scripts/protocol-aliases.json: «${from}» → «${to}». Нужно полное имя из базы, а не инициал: иначе опечатку не поймать.`,
+      );
+    }
+    const key = normalize(from);
+    if (key === target) {
+      throw new Error(`scripts/protocol-aliases.json: «${from}» → «${to}» ничего не меняет, строку можно убрать.`);
+    }
+    if (aliases.has(key)) throw new Error(`scripts/protocol-aliases.json: «${from}» указан дважды.`);
+    const found = byName.get(target) ?? [];
+    if (found.length !== 1) {
+      throw new Error(
+        `scripts/protocol-aliases.json: «${from}» → «${to}», но ` +
+          (found.length === 0
+            ? "такого спортсмена в базе нет — проверьте ФИО."
+            : "в базе несколько таких спортсменов — добавьте отчество."),
+      );
+    }
+    aliases.set(key, found[0]);
+  }
+}
+
+// Обновлять можно только личный результат: у одного спортсмена в одном
+// соревновании лежат ещё парные и микст, и запись места в такую строку
+// испортила бы их результат.
 const resultsByCompetition = new Map();
-for (const row of queryJson("SELECT id, athlete_id, notion_id, competition_id FROM competition_results")) {
+for (const row of queryJson("SELECT id, athlete_id, notion_id, competition_id, event_kind FROM competition_results")) {
+  if (row.event_kind !== "Личные") continue;
   const list = resultsByCompetition.get(row.competition_id) ?? new Map();
   list.set(row.athlete_id, row);
   resultsByCompetition.set(row.competition_id, list);
@@ -750,18 +911,18 @@ function processFolder(folderTargets) {
     }
     for (const entry of protocol.entries) {
       const key = normalize(entry.name);
-      const candidates =
-        byName.get(key) ?? bySurname.get(key.split(" ")[0])?.filter((row) => normalize(row.full_name).split(" ")[1]?.[0] === key.split(" ")[1]?.[0]) ?? [];
+      const hint = aliases.get(key);
+      const candidates = hint ? [hint] : findAthletes(entry.name);
+      if (candidates.length === 0) {
+        out.unmatched.push(`${entry.name} (${entry.place} место, ${basename(protocol.path)})`);
+        continue;
+      }
       // Однофамильцев в протоколе различает пол блока: «Девушки» / «Юноши».
       const sameGender =
         candidates.length > 1 && protocol.gender
           ? candidates.filter((row) => row.gender === protocol.gender)
           : candidates;
-      if (candidates.length === 0) {
-        out.unmatched.push(`${entry.name} (${entry.place} место, ${basename(protocol.path)})`);
-        continue;
-      }
-      if (sameGender.length > 1 || sameGender.length === 0) {
+      if (sameGender.length !== 1) {
         out.ambiguous.push(`${entry.name} — ${candidates.map((row) => row.full_name).join(", ")}`);
         continue;
       }
