@@ -86,6 +86,13 @@ export async function ensureSchema(env: Env): Promise<void> {
       } catch {
         /* колонка уже есть */
       }
+      // Схема конструктора (этапы, группы, два финала) появилась позже
+      // самой таблицы турниров.
+      try {
+        await env.DB.prepare("ALTER TABLE tournaments ADD COLUMN scheme_id TEXT").run();
+      } catch {
+        /* колонка уже есть */
+      }
       // Карточка спортсмена из «Книги учащихся»: полная дата рождения
       // (нужна для блока «Сегодня день рождения»), разряд, группа, тренер.
       for (const column of ["birth_date", "notion_id", "sport_rank", "group_name", "coach", "athlete_status"]) {

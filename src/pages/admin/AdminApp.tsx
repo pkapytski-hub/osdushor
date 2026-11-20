@@ -5,6 +5,7 @@ import ResourceListPage from "./ResourceListPage";
 import ResourceFormPage from "./ResourceFormPage";
 import TournamentsAdminPage from "./TournamentsAdminPage";
 import TournamentEditorPage from "./TournamentEditorPage";
+import ConstructorPage from "@/pages/ConstructorPage";
 import SettingsPage from "./SettingsPage";
 import SeoAdminPage from "./SeoAdminPage";
 import StaffPage from "./StaffPage";
@@ -46,6 +47,7 @@ export default function AdminApp() {
         <Route path="tournaments" element={<TournamentsAdminPage />} />
         <Route path="tournaments/new" element={<TournamentEditorPage />} />
         <Route path="tournaments/:id" element={<TournamentEditorPage />} />
+        <Route path="konstruktor" element={<ConstructorPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="seo" element={<SeoAdminPage />} />
         <Route path="staff" element={<StaffPage />} />

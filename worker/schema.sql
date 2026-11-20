@@ -253,6 +253,10 @@ CREATE TABLE IF NOT EXISTS tournaments (
   title TEXT NOT NULL,
   held_on TEXT NOT NULL,
   format TEXT NOT NULL DEFAULT 'round_robin' CHECK (format IN ('round_robin', 'groups_playoff', 'olympic')),
+  -- Схема конструктора: round_robin, round_robin_2, bracket, groups_bracket,
+  -- groups_two_finals. Пусто у турниров, заведённых до конструктора: для них
+  -- схема выводится из format (см. schemeForLegacyFormat).
+  scheme_id TEXT,
   group_size INTEGER NOT NULL DEFAULT 6,
   playoff_size INTEGER NOT NULL DEFAULT 8,
   -- Длина встречи выбирается в настройках: до 3, 5 или 7 партий (2, 3 или 4 до победы).
@@ -322,6 +326,80 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tournament_matches ON tournament_matches(tournament_id, stage, round, slot);
+
+-- Конструктор соревнований: турнир собирается из этапов, у этапа есть группы
+-- (для сетки — финалы), свой состав и свои встречи. Старые tournament_matches
+-- остаются для турниров прежних форматов; новая модель нужна, чтобы у турнира
+-- было несколько этапов: группы → сетка, группы → финал А и финал Б.
+CREATE TABLE IF NOT EXISTS tournament_stages (
+  id TEXT PRIMARY KEY,
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  -- Порядок этапа в турнире: 1, 2 …
+  ordinal INTEGER NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('groups', 'bracket')),
+  title TEXT NOT NULL,
+  -- Параметры схемы, с которыми этап создан (круги групп, сколько выходит, финалы).
+  rounds INTEGER NOT NULL DEFAULT 1,
+  advance INTEGER NOT NULL DEFAULT 0,
+  finals INTEGER NOT NULL DEFAULT 1,
+  all_places INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tournament_stages_order ON tournament_stages(tournament_id, ordinal);
+
+CREATE TABLE IF NOT EXISTS tournament_stage_groups (
+  stage_id TEXT NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+  no INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  PRIMARY KEY (stage_id, no)
+);
+
+-- Участник этапа: посев и группа (у сетки — номер финала). source_* хранят,
+-- откуда человек пришёл: этап, место в группе и сама группа.
+CREATE TABLE IF NOT EXISTS tournament_stage_entries (
+  stage_id TEXT NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+  athlete_id TEXT NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  group_no INTEGER,
+  seed INTEGER NOT NULL DEFAULT 0,
+  source_stage INTEGER,
+  source_place INTEGER,
+  source_group INTEGER,
+  PRIMARY KEY (stage_id, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_stage_entries ON tournament_stage_entries(stage_id, group_no, seed);
+
+-- Встреча этапа. score_a/score_b — выигранные партии (3:1, 4:2 …).
+-- group_no — группа этапа или номер финала; place_from/place_to — блок сетки.
+CREATE TABLE IF NOT EXISTS tournament_stage_matches (
+  id TEXT PRIMARY KEY,
+  stage_id TEXT NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+  group_no INTEGER,
+  round INTEGER NOT NULL DEFAULT 1,
+  slot INTEGER NOT NULL DEFAULT 1,
+  place_from INTEGER,
+  place_to INTEGER,
+  player_a TEXT NOT NULL REFERENCES athletes(id),
+  player_b TEXT NOT NULL REFERENCES athletes(id),
+  score_a INTEGER,
+  score_b INTEGER,
+  tech_loss_a INTEGER NOT NULL DEFAULT 0,
+  tech_loss_b INTEGER NOT NULL DEFAULT 0,
+  winner_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_stage_matches ON tournament_stage_matches(stage_id, group_no, round, slot);
+
+-- Итоговые места турнира: одно место на участника, считается по последнему этапу.
+CREATE TABLE IF NOT EXISTS tournament_places (
+  tournament_id TEXT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  athlete_id TEXT NOT NULL REFERENCES athletes(id) ON DELETE CASCADE,
+  place INTEGER NOT NULL,
+  wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (tournament_id, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tournament_places ON tournament_places(tournament_id, place);
 
 CREATE TABLE IF NOT EXISTS rating_history (
   id TEXT PRIMARY KEY,

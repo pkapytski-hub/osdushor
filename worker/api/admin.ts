@@ -16,6 +16,7 @@ import { uniqueSlug } from "../lib/slugs";
 import { toBooleanRow, toCompetition, toNews } from "../lib/rows";
 import { removeDemo, seedDemo } from "../demo";
 import { handleTournamentsAdmin } from "./tournaments";
+import { handleConstructorAdmin } from "./constructor";
 
 type FieldKind = "text" | "longtext" | "bool" | "int" | "float" | "datetime" | "date" | "time" | "url";
 
@@ -441,6 +442,7 @@ export async function handleAdmin(
 
   if (resource === "upload") return upload(request, env, user);
   if (resource === "tournaments") return handleTournamentsAdmin(request, env, user, segments.slice(1));
+  if (resource === "constructor") return handleConstructorAdmin(request, env, user, segments.slice(1));
   if (resource === "stats") {
     if (request.method !== "GET") return fail(405, "method_not_allowed", "Метод не поддерживается.");
     return stats(env, user);

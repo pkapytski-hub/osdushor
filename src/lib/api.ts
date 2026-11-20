@@ -1,3 +1,4 @@
+import type { CompetitionDraft } from "../../worker/lib/stages";
 import type {
   Achievement,
   AdminStats,
@@ -102,6 +103,37 @@ const mutate = <T>(path: string, method: string, payload?: unknown) =>
     method,
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
+
+/** Спортсмен в списке выбора конструктора. */
+export interface ConstructorAthlete {
+  id: string;
+  full_name: string;
+  rating: number;
+  birth_year: number | null;
+  is_archived: boolean;
+}
+
+/** Турнир, заведённый конструктором: сводка для списка и шапки страницы. */
+export interface ConstructorTournament {
+  id: string;
+  title: string;
+  held_on: string;
+  scheme_id: string;
+  best_of: number;
+  is_published: number;
+  is_finished: number;
+  participants: number;
+  matches: number;
+  played: number;
+  /** Сколько итоговых мест сохранено в базе. */
+  places: number;
+}
+
+/** Турнир конструктора вместе с этапами, группами, встречами и счётом. */
+export interface ConstructorRecord {
+  tournament: ConstructorTournament;
+  draft: CompetitionDraft;
+}
 
 export interface SettingsResponse {
   settings: SiteSettings;
@@ -257,6 +289,33 @@ export const api = {
       reopen: (id: string) => mutate<{ item: TournamentDetail }>(`/api/admin/tournaments/${id}/reopen`, "POST"),
     },
     athletes: (signal?: AbortSignal) => get<{ items: Athlete[] }>("/api/admin/athletes", signal),
+    constructor: {
+      /** Настоящий список спортсменов школы для выбора участников. */
+      athletes: (signal?: AbortSignal) =>
+        get<{ items: ConstructorAthlete[] }>("/api/admin/constructor/athletes", signal),
+      list: (signal?: AbortSignal) =>
+        get<{ items: ConstructorTournament[] }>("/api/admin/constructor/tournaments", signal),
+      create: (payload: {
+        title: string;
+        held_on: string;
+        scheme_id: string;
+        best_of: number;
+        athlete_ids: string[];
+      }) =>
+        mutate<{ item: ConstructorRecord | null }>("/api/admin/constructor/tournaments", "POST", payload),
+      item: (id: string, signal?: AbortSignal) =>
+        get<{ item: ConstructorRecord }>(
+          `/api/admin/constructor/tournaments/${encodeURIComponent(id)}`,
+          signal,
+        ),
+      /** Счёт встречи: null в обоих полях снимает результат. */
+      score: (id: string, matchId: string, scoreA: number | null, scoreB: number | null) =>
+        mutate<{ item: ConstructorRecord | null }>(
+          `/api/admin/constructor/tournaments/${encodeURIComponent(id)}/matches/${encodeURIComponent(matchId)}`,
+          "PATCH",
+          { score_a: scoreA, score_b: scoreB },
+        ),
+    },
   },
 };
 
